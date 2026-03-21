@@ -1,0 +1,48 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import DashboardPage from '../features/dashboard/DashboardPage.vue'
+
+function stubProjectsFetch() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.url
+      if (url.includes('/projects') && url.includes('page=')) {
+        return new Response(
+          JSON.stringify({ data: [], total: 0, page: 1, size: 500 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      return new Response('not found', { status: 404 })
+    }),
+  )
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('DashboardPage', () => {
+  it('renders prototype-aligned stats and activity (HTML 原型工作台)', async () => {
+    stubProjectsFetch()
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', name: 'home', component: { template: '<div />' } }],
+    })
+    await router.push('/')
+    await router.isReady()
+
+    const wrapper = mount(DashboardPage, {
+      global: {
+        plugins: [router],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="dashboard-page"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('本月 Token 消耗')
+    expect(wrapper.find('[data-testid="dashboard-activity-card"]').exists()).toBe(true)
+  })
+})

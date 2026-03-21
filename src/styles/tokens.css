@@ -1,0 +1,28 @@
+/* 设计令牌：与 HTML 原型 `assets/css/prototype.css` 一致，并保留旧变量别名供 ModuleContent 等使用 */
+:root {
+  --sidebar-w: 220px;
+  --primary: #4f6ef7;
+  --primary-light: #eef1ff;
+  --danger: #f04438;
+  --success: #12b76a;
+  --warning: #f79009;
+  --bg: #f7f8fa;
+  --card: #ffffff;
+  --border: #e4e7ec;
+  --text: #101828;
+  --sub: #667085;
+  --sidebar-bg: #0f1629;
+  --sidebar-text: #98a2b3;
+  --sidebar-border: #1d2d50;
+
+  --text-main: var(--text);
+  --text-subtle: var(--sub);
+  --page-bg: var(--bg);
+  --card-bg: var(--card);
+  --card-border: var(--border);
+  --primary-soft: var(--primary-light);
+  --shadow-soft: 0 8px 24px rgba(16, 24, 40, 0.08);
+  --sidebar-muted: var(--sidebar-text);
+  --sidebar-active: #4f6ef7;
+  --sidebar-active-shadow: rgba(79, 110, 247, 0.18);
+}
