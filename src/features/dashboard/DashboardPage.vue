@@ -1,27 +1,56 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useOverlay } from '../../composables/useOverlay'
 import { useProjects } from '../../composables/useProjects'
+import { listUsers } from '../../services/users'
+import { listUsageEvents } from '../../services/usage-events'
 
 const router = useRouter()
 const { openNewProjectModal } = useOverlay()
-const { loadProjects, projectSummaries } = useProjects()
+const { loadProjects, projectSummaries, projectState } = useProjects()
 
-onMounted(() => {
+const userCount = ref<number | null>(null)
+const activeUserCount = ref<number | null>(null)
+const monthlyTokens = ref<number | null>(null)
+
+onMounted(async () => {
   void loadProjects()
+  try {
+    const users = await listUsers()
+    userCount.value = users.length
+    activeUserCount.value = users.filter((u) => u.status === 'ACTIVE').length
+  } catch {
+    // non-critical
+  }
+  try {
+    const page = await listUsageEvents({ page: 1, size: 100 })
+    monthlyTokens.value = (page.data ?? []).reduce((sum, e) => sum + (Number(e.totalTokens) || 0), 0)
+  } catch {
+    // non-critical
+  }
 })
+
+const projectCount = computed(() =>
+  projectState.loading ? null : projectSummaries.value.length
+)
+const activeProjectCount = computed(() =>
+  projectState.loading ? null : projectSummaries.value.filter((p) => p.statusLabel === 'ACTIVE').length
+)
+
+function fmt(n: number | null, fallback = '…') {
+  if (n === null) return fallback
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
 
 function goPage(pageKey: string) {
   void router.push(`/placeholder/${pageKey}`)
 }
 
-function enterByName(name: string) {
-  const id = projectSummaries.value.find((p) => p.name === name)?.id
-  if (id) void router.push(`/projects/${id}/overview`)
-  else void router.push('/projects')
-}
+const recentProjects = computed(() => projectSummaries.value.slice(0, 3))
 </script>
 
 <template>
@@ -29,85 +58,64 @@ function enterByName(name: string) {
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-icon">🤖</div>
-        <div class="stat-label">本月 Token 消耗</div>
-        <div class="stat-value" style="color: var(--primary)">2.4M</div>
-        <div class="stat-delta">↑ 12% 较上月</div>
+        <div class="stat-label">本月 Token 消耗（样本）</div>
+        <div class="stat-value" style="color: var(--primary)">{{ fmt(monthlyTokens) }}</div>
+        <div class="stat-delta">按最近 100 条用量记录估算</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">🪪</div>
-        <div class="stat-label">活跃平台凭证</div>
-        <div class="stat-value">38</div>
-        <div class="stat-delta">↑ 5 本周新增</div>
+        <div class="stat-icon">📁</div>
+        <div class="stat-label">项目总数</div>
+        <div class="stat-value">{{ fmt(projectCount) }}</div>
+        <div class="stat-delta">{{ activeProjectCount !== null ? `${activeProjectCount} 个进行中` : '…' }}</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">⚡</div>
-        <div class="stat-label">本月技能调用</div>
-        <div class="stat-value" style="color: var(--success)">1,847</div>
-        <div class="stat-delta">↑ 23% 较上月</div>
+        <div class="stat-icon">👥</div>
+        <div class="stat-label">平台用户数</div>
+        <div class="stat-value" style="color: var(--success)">{{ fmt(userCount) }}</div>
+        <div class="stat-delta">{{ activeUserCount !== null ? `${activeUserCount} 人在职活跃` : '…' }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">⚠️</div>
         <div class="stat-label">凭证即将过期</div>
-        <div class="stat-value" style="color: var(--warning)">4</div>
-        <div class="stat-delta down">7 天内过期</div>
+        <div class="stat-value" style="color: var(--warning)">—</div>
+        <div class="stat-delta">凭证管理查看详情</div>
       </div>
     </div>
 
     <div style="font-size: 13px; font-weight: 700; color: var(--sub); margin-bottom: 10px">📁 我参与的项目</div>
-    <div class="grid-3" style="margin-bottom: 20px">
+
+    <div v-if="projectState.loading" style="color: var(--sub); font-size: 13px; margin-bottom: 20px">加载项目中…</div>
+    <div v-else-if="projectState.error" style="color: var(--danger); font-size: 13px; margin-bottom: 20px">⚠️ {{ projectState.error }}</div>
+    <div v-else-if="recentProjects.length === 0" style="color: var(--sub); font-size: 13px; margin-bottom: 20px">暂无项目，点击右下角「新建项目」创建第一个。</div>
+    <div v-else class="grid-3" style="margin-bottom: 20px">
       <div
+        v-for="proj in recentProjects"
+        :key="proj.id"
         class="project-card"
         role="button"
         tabindex="0"
-        @click="enterByName('商城系统')"
-        @keydown.enter="enterByName('商城系统')"
+        @click="router.push(`/projects/${proj.id}/overview`)"
+        @keydown.enter="router.push(`/projects/${proj.id}/overview`)"
       >
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
-          <span style="font-size: 18px">🛒</span>
-          <span class="badge badge-green">进行中</span>
+          <span style="font-size: 18px">{{ proj.icon }}</span>
+          <span class="badge" :class="proj.statusTone === 'success' ? 'badge-green' : 'badge-yellow'">
+            {{ proj.statusLabel === 'ACTIVE' ? '进行中' : proj.statusLabel }}
+          </span>
         </div>
-        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px">商城系统</div>
-        <div style="font-size: 12px; color: var(--sub)">AI 能力 5/6 · 完成度 58% · 6 名成员</div>
-        <div style="display: flex; gap: 6px; margin-top: 8px">
-          <span class="project-tag">知识库 12</span><span class="project-tag">技能 4</span
-          ><span class="project-tag">工具 8</span>
-        </div>
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px">{{ proj.name }}</div>
+        <div style="font-size: 12px; color: var(--sub)">{{ proj.typeLabel }} · {{ proj.description || '暂无描述' }}</div>
       </div>
       <div
+        v-if="projectSummaries.length > 3"
         class="project-card"
         role="button"
         tabindex="0"
-        @click="enterByName('用户中心')"
-        @keydown.enter="enterByName('用户中心')"
+        style="display: flex; align-items: center; justify-content: center; color: var(--sub); font-size: 13px"
+        @click="router.push('/projects')"
+        @keydown.enter="router.push('/projects')"
       >
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
-          <span style="font-size: 18px">👤</span>
-          <span class="badge badge-green">进行中</span>
-        </div>
-        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px">用户中心</div>
-        <div style="font-size: 12px; color: var(--sub)">AI 能力 4/4 · 完成度 72% · 4 名成员</div>
-        <div style="display: flex; gap: 6px; margin-top: 8px">
-          <span class="project-tag">知识库 8</span><span class="project-tag">技能 3</span
-          ><span class="project-tag">工具 5</span>
-        </div>
-      </div>
-      <div
-        class="project-card"
-        role="button"
-        tabindex="0"
-        @click="enterByName('支付网关')"
-        @keydown.enter="enterByName('支付网关')"
-      >
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
-          <span style="font-size: 18px">💳</span>
-          <span class="badge badge-blue">测试中</span>
-        </div>
-        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px">支付网关</div>
-        <div style="font-size: 12px; color: var(--sub)">AI 能力 4/5 · 完成度 40% · 5 名成员</div>
-        <div style="display: flex; gap: 6px; margin-top: 8px">
-          <span class="project-tag">知识库 6</span><span class="project-tag">技能 2</span
-          ><span class="project-tag">工具 4</span>
-        </div>
+        查看全部 {{ projectSummaries.length }} 个项目 →
       </div>
     </div>
 
@@ -115,32 +123,32 @@ function enterByName(name: string) {
       <div class="card">
         <div class="card-header">
           <span class="card-title">📋 待处理事项</span>
-          <span class="badge badge-yellow">5 项待办</span>
+          <span class="badge badge-yellow">待办</span>
         </div>
         <div class="card-body" style="padding: 0 16px">
           <div class="skill-item" role="button" tabindex="0" @click="goPage('keys')">
             <div class="skill-icon" style="background: #fef3f2">⚠️</div>
             <div style="flex: 1">
-              <div class="skill-name">3 个平台凭证即将过期</div>
-              <div class="skill-desc">张三、王五、赵六 的凭证将在 7 天内过期，需提醒续签</div>
+              <div class="skill-name">凭证管理</div>
+              <div class="skill-desc">查看成员平台凭证状态、上游 API Key 及配额策略</div>
             </div>
-            <span class="badge badge-red" style="font-size: 11px">紧急</span>
+            <span class="badge badge-blue" style="font-size: 11px">管理</span>
           </div>
-          <div class="skill-item" role="button" tabindex="0" @click="goPage('skills')">
-            <div class="skill-icon" style="background: #fff6ed">📝</div>
+          <div class="skill-item" role="button" tabindex="0" @click="goPage('staff')">
+            <div class="skill-icon" style="background: #f0f4ff">👥</div>
             <div style="flex: 1">
-              <div class="skill-name">2 个技能待审核发布</div>
-              <div class="skill-desc">「安全扫描」「API 文档生成」提交审核，等待管理员审批</div>
+              <div class="skill-name">员工管理</div>
+              <div class="skill-desc">查看、新增、停用平台用户账号</div>
             </div>
-            <span class="badge badge-yellow" style="font-size: 11px">审核</span>
+            <span class="badge badge-blue" style="font-size: 11px">管理</span>
           </div>
-          <div class="skill-item" role="button" tabindex="0" @click="goPage('knowledge')">
-            <div class="skill-icon" style="background: #eef1ff">📚</div>
+          <div class="skill-item" role="button" tabindex="0" @click="router.push('/projects')">
+            <div class="skill-icon" style="background: #eef1ff">📁</div>
             <div style="flex: 1">
-              <div class="skill-name">知识库文档 3 篇待更新</div>
-              <div class="skill-desc">编码规范 v2.1、API 设计指南、安全合规文档有新版本</div>
+              <div class="skill-name">全部项目</div>
+              <div class="skill-desc">查看所有项目，创建或归档</div>
             </div>
-            <span class="badge badge-blue" style="font-size: 11px">更新</span>
+            <span class="badge badge-green" style="font-size: 11px">{{ fmt(projectCount) }} 个</span>
           </div>
         </div>
       </div>
@@ -179,19 +187,6 @@ function enterByName(name: string) {
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
             <div>
-              <div style="font-size: 12px; color: var(--sub)">技能复用率</div>
-              <div style="font-weight: 700">68 次/技能/月</div>
-            </div>
-            <div style="text-align: right">
-              <span class="badge badge-green">✅ 达标</span>
-              <div style="font-size: 11px; color: var(--sub)">目标 ≥ 50 次/技能</div>
-            </div>
-          </div>
-          <div style="background: var(--bg); border-radius: 4px; height: 6px; margin-bottom: 16px">
-            <div style="background: var(--success); height: 100%; border-radius: 4px; width: 68%" />
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
-            <div>
               <div style="font-size: 12px; color: var(--sub)">凭证安全事件</div>
               <div style="font-weight: 700">0 起</div>
             </div>
@@ -200,64 +195,18 @@ function enterByName(name: string) {
               <div style="font-size: 11px; color: var(--sub)">目标 0 起泄露</div>
             </div>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center">
-            <div>
-              <div style="font-size: 12px; color: var(--sub)">代理延迟增量</div>
-              <div style="font-weight: 700">P99 142ms</div>
-            </div>
-            <div style="text-align: right">
-              <span class="badge badge-green">✅ 达标</span>
-              <div style="font-size: 11px; color: var(--sub)">目标 ≤ 200ms</div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
 
     <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap">
-      <button class="btn" type="button" @click="goPage('my-credential')">🪪 查看我的凭证</button>
-      <button class="btn" type="button" @click="goPage('my-ability')">🧩 查看可用能力</button>
-      <button class="btn" type="button" @click="goPage('integrations')">🔌 集成市场</button>
+      <button class="btn" type="button" @click="goPage('keys')">🔑 凭证管理</button>
+      <button class="btn" type="button" @click="goPage('staff')">👥 员工管理</button>
+      <button class="btn" type="button" @click="goPage('knowledge')">📚 全局知识库</button>
       <button class="btn" type="button" @click="goPage('skills')">⚡ 全局技能库</button>
       <button class="btn btn-primary" type="button" style="margin-left: auto" @click="openNewProjectModal">
         + 新建项目
       </button>
-    </div>
-
-    <div style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px">
-      <div class="card" data-testid="dashboard-activity-card">
-        <div class="card-header">
-          <span class="card-title">📋 平台动态</span>
-        </div>
-        <div class="card-body" style="padding: 16px 20px">
-          <div class="timeline">
-            <div class="timeline-item">
-              <div class="timeline-dot" />
-              <div class="timeline-time">10分钟前</div>
-              <div class="timeline-content">
-                <strong>李四</strong> 在 <strong>商城系统</strong> 中更新了需求文档
-              </div>
-            </div>
-            <div class="timeline-item">
-              <div class="timeline-dot" />
-              <div class="timeline-time">1小时前</div>
-              <div class="timeline-content">
-                <strong>王五</strong> 平台凭证成功接入 Claude Code，可用技能 12 个
-              </div>
-            </div>
-            <div class="timeline-item">
-              <div class="timeline-dot" />
-              <div class="timeline-time">2小时前</div>
-              <div class="timeline-content">AI 为 <strong>用户中心</strong> 项目生成了接口文档（/doc-gen 技能）</div>
-            </div>
-            <div class="timeline-item">
-              <div class="timeline-dot" />
-              <div class="timeline-time">昨天</div>
-              <div class="timeline-content"><strong>张三</strong> 新建项目 <strong>数据看板</strong></div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </section>
 </template>

@@ -60,8 +60,8 @@ function userLabel(users: UserResponse[], userId: number | null | undefined) {
 
 const emptyMetrics: DashboardMetric[] = [
   { id: 'token-usage', icon: '🤖', label: '用量 Token 汇总', value: '0', delta: '暂无用量事件', tone: 'primary' },
-  { id: 'platform-users', icon: '👥', label: '平台用户', value: '0', delta: 'GET /api/users' },
-  { id: 'active-projects', icon: '📁', label: '活跃项目', value: '0', delta: 'GET /api/projects' },
+  { id: 'platform-users', icon: '👥', label: '平台用户', value: '0', delta: '组织成员总数' },
+  { id: 'active-projects', icon: '📁', label: '活跃项目', value: '0', delta: '状态为进行中的项目' },
   { id: 'failed-calls', icon: '🚨', label: '非成功调用（本页）', value: '0', delta: '来自 usage-events', tone: 'default' },
 ]
 
@@ -111,7 +111,7 @@ export function useDashboard() {
           icon: '👥',
           label: '平台用户',
           value: String(users.length),
-          delta: 'GET /api/users',
+          delta: '组织成员总数',
         },
         {
           id: 'active-projects',

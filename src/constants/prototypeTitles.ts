@@ -43,4 +43,5 @@ export const PROJECT_SECTION_TITLES: Record<string, string> = {
   workspace: '接入与凭证',
   agile: '研发流程',
   skillconfig: 'Skill 配置',
+  lekai: '乐知助手',
 }

@@ -1,18 +1,28 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import type { ProjectSummary } from '../../types/project'
 
-defineProps<{
+const props = defineProps<{
   project: ProjectSummary
 }>()
 
 const emit = defineEmits<{
   select: [projectId: string]
   click: [projectId: string]
+  edit: [projectId: string]
 }>()
+
+const canEdit = computed(() => /^\d+$/.test(props.project.id))
 
 function handleClick(projectId: string) {
   emit('select', projectId)
   emit('click', projectId)
+}
+
+function onEditClick(event: MouseEvent) {
+  event.stopPropagation()
+  emit('edit', props.project.id)
 }
 </script>
 
@@ -26,15 +36,30 @@ function handleClick(projectId: string) {
           <div class="project-card-type">{{ project.typeLabel }}</div>
         </div>
       </div>
-      <span class="project-card-status" :class="project.statusTone">{{ project.statusLabel }}</span>
+      <div class="project-card-head-actions">
+        <button
+          v-if="canEdit"
+          type="button"
+          class="project-card-edit"
+          data-testid="project-card-edit"
+          @click="onEditClick"
+        >
+          编辑
+        </button>
+        <span class="project-card-status" :class="project.statusTone">{{ project.statusLabel }}</span>
+      </div>
     </div>
 
     <p class="project-card-description">{{ project.description }}</p>
 
     <dl class="project-card-meta">
       <div>
-        <dt>当前 Sprint</dt>
-        <dd>{{ project.sprintLabel }}</dd>
+        <dt>代码服务</dt>
+        <dd>{{ project.serviceCount }} 个</dd>
+      </div>
+      <div>
+        <dt>AI 能力状态</dt>
+        <dd>{{ project.aiCapabilityLabel }}</dd>
       </div>
       <div>
         <dt>本月 Token</dt>
@@ -48,7 +73,7 @@ function handleClick(projectId: string) {
           {{ member }}
         </span>
       </div>
-      <span class="project-card-summary">{{ project.serviceCount }} 个服务 · {{ project.memberCount }} 人</span>
+      <span class="project-card-summary">{{ project.memberCount }} 位成员</span>
     </div>
   </article>
 </template>
@@ -77,6 +102,33 @@ function handleClick(projectId: string) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.project-card-head-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-card-edit {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 110, 247, 0.35);
+  background: rgba(79, 110, 247, 0.08);
+  color: #4f6ef7;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.project-card-edit:hover {
+  background: rgba(79, 110, 247, 0.14);
+  border-color: rgba(79, 110, 247, 0.55);
 }
 
 .project-card-title {
@@ -142,6 +194,7 @@ function handleClick(projectId: string) {
 
 .project-card-meta div {
   flex: 1;
+  min-width: 0;
 }
 
 .project-card-meta dt {

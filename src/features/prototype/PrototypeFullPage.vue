@@ -50,8 +50,10 @@ onMounted(() => {
   }
 
   function tryNavigate() {
+    const el = iframeRef.value
+    if (!el) return
     try {
-      const win = iframe.contentWindow as any
+      const win = el.contentWindow as any
       navigate(win)
     } catch {
       // Ignore navigation failures in test / sandbox environments

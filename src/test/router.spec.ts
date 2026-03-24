@@ -24,10 +24,26 @@ describe('router', () => {
     expect(match.meta.scope).toBe('project')
   })
 
+  it('resolves project lezhi assistant route', () => {
+    const match = router.resolve('/projects/mall/lekai')
+
+    expect(match.name).toBe('project-lezhi')
+    expect(match.meta.scope).toBe('project')
+  })
+
   it('resolves prototype full-page route', () => {
     const match = router.resolve('/prototype')
 
     expect(match.name).toBe('prototype-html')
     expect(match.meta.hideChrome).toBe(true)
+    expect(match.meta.public).toBe(true)
+  })
+
+  it('resolves login route', () => {
+    const match = router.resolve('/login')
+
+    expect(match.name).toBe('login')
+    expect(match.meta.hideChrome).toBe(true)
+    expect(match.meta.public).toBe(true)
   })
 })

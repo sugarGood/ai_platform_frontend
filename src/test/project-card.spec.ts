@@ -14,7 +14,7 @@ describe('ProjectCard', () => {
           typeLabel: 'Product',
           description: 'B2C commerce platform',
           statusLabel: 'Active',
-          sprintLabel: 'Sprint 8 · 58% complete',
+          aiCapabilityLabel: '5/6 · 58%',
           tokenLabel: '320K',
           serviceCount: 3,
           memberCount: 6,

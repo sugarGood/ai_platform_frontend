@@ -8,42 +8,6 @@ function cell(text: string, tone?: TableCell['tone'], mono = false): TableCell {
  * Global pages that exist in HTML prototype sidebar but were not in GlobalModulePage yet.
  */
 export const prototypeGlobalPagesExtra: Record<string, ModulePageConfig> = {
-  'my-credential': {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Personal',
-        title: '我的凭证',
-        description:
-          '一人一证，多项目共用。平台凭证是你在 AI 中台内的唯一身份标识，可访问被授权的全部项目，无需为不同项目切换凭证。',
-        actions: [
-          { label: '复制凭证 ID', variant: 'primary' },
-          { label: '查看接入指南' },
-        ],
-      },
-      {
-        type: 'metrics',
-        items: [
-          { id: 'c1', icon: '🪪', label: '凭证状态', value: '已激活', delta: '最近签发 03-12', tone: 'success' },
-          { id: 'c2', icon: '🔐', label: '授权项目', value: '4', delta: '商城 / 用户中心 / 支付 / 数据看板', tone: 'primary' },
-          { id: 'c3', icon: '⏱️', label: '凭证有效期', value: '至 2027-03', delta: '到期前 30 天提醒', tone: 'primary' },
-          { id: 'c4', icon: '🛡️', label: '安全等级', value: '高', delta: '已绑定设备指纹 + 审计', tone: 'success' },
-        ],
-      },
-      {
-        type: 'table',
-        title: '最近使用记录',
-        table: {
-          columns: ['时间', '项目', '能力', '结果'],
-          rows: [
-            [cell('09:42'), cell('商城系统'), cell('代码审查 Skill'), cell('成功', 'success')],
-            [cell('昨天'), cell('支付网关'), cell('MCP 工具调用'), cell('成功', 'success')],
-            [cell('昨天'), cell('用户中心'), cell('知识库检索'), cell('成功', 'success')],
-          ],
-        },
-      },
-    ],
-  },
   'my-ability': {
     sections: [
       {
@@ -155,29 +119,6 @@ export const prototypeGlobalPagesExtra: Record<string, ModulePageConfig> = {
           { icon: '💬', title: '飞书', subtitle: '通知与审批', badge: '官方', tone: 'primary', description: '告警、配额、审批卡片直达群聊。' },
           { icon: '☁️', title: '云厂商 KMS', subtitle: '密钥托管', badge: '企业', tone: 'warning', description: '上游 Key 不落盘，按项目绑定解密策略。' },
         ],
-      },
-    ],
-  },
-  staff: {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Directory',
-        title: '员工管理',
-        description: '维护组织成员、账号状态与平台凭证生命周期；支持批量邀请与角色模板。',
-        actions: [{ label: '邀请成员', variant: 'primary' }],
-      },
-      {
-        type: 'table',
-        title: '成员列表',
-        table: {
-          columns: ['姓名', '角色', '部门', '凭证', '状态'],
-          rows: [
-            [cell('张三'), cell('超级管理员'), cell('平台'), cell('plt_***a1', 'default', true), cell('在线', 'success')],
-            [cell('李四'), cell('项目负责人'), cell('研发'), cell('plt_***b2', 'default', true), cell('在线', 'success')],
-            [cell('王五'), cell('开发者'), cell('研发'), cell('plt_***c3', 'default', true), cell('在线', 'success')],
-          ],
-        },
       },
     ],
   },

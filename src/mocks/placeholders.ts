@@ -21,8 +21,8 @@ export const globalPlaceholderContent: Record<string, PlaceholderContent> = {
 export const projectPlaceholderContent: Record<string, PlaceholderContent> = {
   agile: {
     title: '研发流程',
-    description: '这里将承载 Sprint 看板、Backlog、燃尽图与 AI 回顾能力。',
-    highlights: ['Sprint 看板', '任务状态流转', 'AI 迭代回顾'],
+    description: '这里将承载任务看板、需求列表、进度视图与 AI 回顾能力。',
+    highlights: ['任务看板', '任务状态流转', 'AI 迭代回顾'],
   },
   services: {
     title: '代码服务',

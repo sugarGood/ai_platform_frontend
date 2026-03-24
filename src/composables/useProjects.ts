@@ -167,15 +167,19 @@ function mapBackendService(s: BackendProjectServiceResponse): ProjectServiceHeal
 
 function toProjectSummary(api: BackendProjectResponse, tokenLabel = '--K'): ProjectSummary {
   const tone: ProjectSummary['statusTone'] = api.status === 'ACTIVE' ? 'success' : 'warning'
+  const pt = api.projectType?.toUpperCase() as BackendProjectType
+  const projectType = (['PRODUCT', 'PLATFORM', 'DATA', 'OTHER'] as const).includes(pt) ? pt : undefined
   return {
     id: String(api.id),
     name: api.name,
     icon: api.icon?.trim() || '📁',
     typeLabel: resolveTypeLabel(api.projectType),
+    code: api.code?.trim() || undefined,
+    projectType,
     description: api.description?.trim() || '',
     statusLabel: api.status,
     statusTone: tone,
-    sprintLabel: 'Sprint · --',
+    aiCapabilityLabel: '-- / --',
     tokenLabel,
     serviceCount: 0,
     memberCount: 0,
@@ -186,10 +190,11 @@ function toProjectSummary(api: BackendProjectResponse, tokenLabel = '--K'): Proj
 function toProjectDetail(summary: ProjectSummary): ProjectDetail {
   return {
     ...summary,
-    currentSprint: 'Sprint · --',
-    sprintProgress: '0% 已完成',
     incidentsSummary: '无事故',
     monthlyTokenDelta: '0',
+    aiReadyCount: '-- / --',
+    aiReadyDelta: '暂无数据',
+    aiSummary: '暂无 AI 摘要，数据加载后将自动生成。',
     services: [],
     activities: [],
     incidents: [],
@@ -233,10 +238,11 @@ export async function refreshProjectSpaceFromApi(projectId: string) {
 
     const detail: ProjectDetail = {
       ...summary,
-      currentSprint: 'Sprint · --',
-      sprintProgress: '0% 已完成',
       incidentsSummary: '无事故',
       monthlyTokenDelta: '0',
+      aiReadyCount: '-- / --',
+      aiReadyDelta: '暂无数据',
+      aiSummary: '暂无 AI 摘要，数据加载后将自动生成。',
       services: services.map(mapBackendService),
       activities: [],
       incidents: [],

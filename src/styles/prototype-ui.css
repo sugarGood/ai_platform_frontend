@@ -116,9 +116,30 @@
     .page-shell .skill-name { font-weight: 500; font-size: 13px; margin-bottom: 3px; }
     .page-shell .skill-desc { color: var(--sub); font-size: 12px; }
 
-    /* Input */
-    .page-shell input, .page-shell select, .page-shell textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; width: 100%; outline: none; font-family: inherit; }
-    .page-shell input:focus, .page-shell select:focus, .page-shell textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+    /* Input（checkbox/radio 不参与 width:100%，否则在 flex 行内会挤掉文案） */
+    .page-shell input:not([type='checkbox']):not([type='radio']),
+    .page-shell select,
+    .page-shell textarea {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+      font-family: inherit;
+    }
+    .page-shell input[type='checkbox'],
+    .page-shell input[type='radio'] {
+      width: auto;
+      flex-shrink: 0;
+      accent-color: var(--primary);
+    }
+    .page-shell input:not([type='checkbox']):not([type='radio']):focus,
+    .page-shell select:focus,
+    .page-shell textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
     .page-shell .form-group { margin-bottom: 16px; }
     .page-shell .form-label { font-size: 13px; font-weight: 500; margin-bottom: 6px; display: block; }
 

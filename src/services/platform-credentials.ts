@@ -25,3 +25,19 @@ export function revokePlatformCredential(id: number, reason: string) {
   })
 }
 
+/** OpenAPI：`POST /api/credentials/{id}/renew`，body 含 renewDays：30 / 90 / 180 */
+export function renewPlatformCredential(id: number, renewDays: 30 | 90 | 180) {
+  return requestJson<PlatformCredentialResponse>(`/credentials/${id}/renew`, {
+    method: 'POST',
+    body: JSON.stringify({ renewDays }),
+  })
+}
+
+/** OpenAPI：`POST /api/credentials/{id}/rotate` — 响应含新明文密钥（仅一次） */
+export function rotatePlatformCredential(id: number) {
+  return requestJson<{ plainKey: string; credential: PlatformCredentialResponse }>(`/credentials/${id}/rotate`, {
+    method: 'POST',
+  })
+}
+
+

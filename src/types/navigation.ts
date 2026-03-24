@@ -6,6 +6,10 @@ export interface NavItem {
   icon: string
   to: string
   badge?: string
+  /** 右侧主色胶囊标签（如乐知助手的「AI」） */
+  pill?: string
+  /** 侧栏高亮样式变体 */
+  accent?: 'lezhi'
 }
 
 export interface NavGroup {

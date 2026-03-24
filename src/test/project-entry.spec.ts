@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App.vue'
 import { routes } from '../router'
+import { jsonEnvelope } from './mock-api-envelope'
 
 const listProjectPayload = {
   data: [
@@ -37,7 +38,7 @@ describe('project entry', () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = typeof input === 'string' ? input : input.url
         if (url.includes('/projects') && url.includes('page=')) {
-          return new Response(JSON.stringify(listProjectPayload), {
+          return new Response(jsonEnvelope(listProjectPayload), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })

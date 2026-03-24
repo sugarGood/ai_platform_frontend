@@ -3,6 +3,7 @@ import type {
   BackendProjectResponse,
   BackendProjectServiceResponse,
   CreateBackendProjectPayload,
+  UpdateBackendProjectPayload,
 } from '../types/project'
 
 import type { PageResponse } from '../lib/api-client'
@@ -25,8 +26,22 @@ export function createProject(payload: CreateBackendProjectPayload) {
   })
 }
 
+export function updateProject(id: number, payload: UpdateBackendProjectPayload) {
+  return requestJson<BackendProjectResponse>(`/projects/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function listProjectMembers(projectId: number) {
   return requestJson<BackendProjectMemberResponse[]>(`/projects/${projectId}/members`)
+}
+
+export function addProjectMember(projectId: number, payload: { userId: number; role?: string }) {
+  return requestJson<BackendProjectMemberResponse>(`/projects/${projectId}/members`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function listProjectServices(projectId: number) {

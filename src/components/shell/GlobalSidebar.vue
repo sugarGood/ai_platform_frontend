@@ -1,9 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
+import { useAuth } from '../../composables/useAuth'
 import { globalNavGroups } from '../../mocks/navigation'
 
 const route = useRoute()
+const { displayName, avatarChar, user } = useAuth()
+
+const roleLabel = computed(() => {
+  const r = user.value?.platformRole
+  if (r === 'ADMIN') return '超级管理员'
+  return r?.trim() || '成员'
+})
 
 function isActive(path: string) {
   if (route.path === path) return true
@@ -39,10 +48,10 @@ function isActive(path: string) {
     </div>
 
     <div class="sidebar-footer">
-      <div class="avatar">张</div>
+      <div class="avatar">{{ avatarChar }}</div>
       <div class="user-info">
-        <div class="name">张三</div>
-        <div class="role">超级管理员</div>
+        <div class="name">{{ displayName }}</div>
+        <div class="role">{{ roleLabel }}</div>
       </div>
     </div>
   </aside>

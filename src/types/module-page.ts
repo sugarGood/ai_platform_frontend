@@ -74,7 +74,29 @@ export interface KanbanColumn {
   items: ListItem[]
 }
 
+export interface KnowledgeOverviewRow {
+  name: string
+  category: TableCell
+  chunks: string
+  hitCount: string
+  linkedProjects: string
+  injectMode: TableCell
+  updatedAt: string
+  status?: TableCell
+  actions?: string[]
+}
+
+export interface WorkspaceTag {
+  text: string
+  tone?: Tone
+}
+
 export type ModuleSection =
+  | {
+      type: 'callout'
+      emphasis: string
+      body: string
+    }
   | {
       type: 'hero'
       eyebrow?: string
@@ -106,6 +128,7 @@ export type ModuleSection =
       type: 'table'
       title: string
       badge?: string
+      actions?: PageAction[]
       table: TableData
       note?: string
     }
@@ -129,6 +152,7 @@ export type ModuleSection =
       description?: string
       code: string
       actions?: PageAction[]
+      footerNote?: NoteItem
     }
   | {
       type: 'kanban'
@@ -141,12 +165,32 @@ export type ModuleSection =
       items: Array<{
         title: string
         badge?: string
+        subtitle?: string
+        panelTone?: 'default' | 'success'
         lines?: InfoLine[]
         notes?: NoteItem[]
         list?: ListItem[]
         code?: string
+        codeActions?: PageAction[]
+        tags?: WorkspaceTag[]
+        tagsLabel?: string
+        headerActions?: PageAction[]
         actions?: PageAction[]
       }>
+    }
+  | {
+      type: 'knowledge-overview'
+      title: string
+      metrics: PageMetric[]
+      searchPlaceholder: string
+      categoryOptions: string[]
+      quickActionLabel: string
+      refreshLabel: string
+      actions?: PageAction[]
+      table: {
+        columns: string[]
+        rows: KnowledgeOverviewRow[]
+      }
     }
 
 export interface ModulePageConfig {

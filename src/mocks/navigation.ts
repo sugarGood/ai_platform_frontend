@@ -67,6 +67,12 @@ export const projectNavGroups: NavGroup[] = [
     items: [{ key: 'incidents', label: '事故与告警', icon: '🚨', to: 'incidents', badge: '1' }],
   },
   {
+    label: '乐知助手',
+    items: [
+      { key: 'lekai', label: '乐知', icon: '🔮', to: 'lekai', pill: 'AI', accent: 'lezhi' },
+    ],
+  },
+  {
     label: '配置',
     items: [
       { key: 'members', label: '成员权限', icon: '👥', to: 'members' },

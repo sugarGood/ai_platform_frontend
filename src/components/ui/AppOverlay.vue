@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 
-import { projectTypeOptions } from '../../composables/useProjects'
 import { useOverlay } from '../../composables/useOverlay'
+import EditProjectModalForm from './EditProjectModalForm.vue'
+import NewProjectModalForm from './NewProjectModalForm.vue'
 
-const { closeOverlay, overlayState, submitNewProjectDraft } = useOverlay()
+const { closeOverlay, overlayState } = useOverlay()
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)
@@ -23,7 +24,10 @@ function onKeydown(event: KeyboardEvent) {
 
 <template>
   <div v-if="overlayState.open" class="overlay-backdrop" data-testid="app-overlay" @click.self="closeOverlay">
-    <section class="overlay-panel">
+    <section
+      class="overlay-panel"
+      :class="{ 'overlay-panel--wide': overlayState.kind === 'new-project' || overlayState.kind === 'edit-project' }"
+    >
       <header class="overlay-header">
         <div>
           <div class="overlay-title">{{ overlayState.title }}</div>
@@ -36,53 +40,12 @@ function onKeydown(event: KeyboardEvent) {
         <article v-for="item in overlayState.items" :key="item" class="overlay-list-item">{{ item }}</article>
       </div>
 
-      <div v-else-if="overlayState.kind === 'new-project'" data-testid="new-project-modal" class="overlay-body form-body">
-        <label class="form-field">
-          <span>项目名称</span>
-          <input v-model="overlayState.draft.name" placeholder="例：支付网关 v2" />
-        </label>
-        <label class="form-field">
-          <span>项目编码</span>
-          <input v-model="overlayState.draft.code" placeholder="例：PAYMENT_GATEWAY" />
-          <small class="field-hint">后端要求全局唯一，建议使用大写英文或下划线。</small>
-        </label>
-        <label class="form-field">
-          <span>项目类型</span>
-          <select v-model="overlayState.draft.type">
-            <option v-for="option in projectTypeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-          <small class="field-hint">
-            {{ projectTypeOptions.find((option) => option.value === overlayState.draft.type)?.hint }}
-          </small>
-        </label>
-        <label class="form-field">
-          <span>项目描述（可选）</span>
-          <textarea v-model="overlayState.draft.description" rows="2" placeholder="简要说明项目目标与范围" />
-        </label>
-        <label class="form-field">
-          <span>图标（可选）</span>
-          <input v-model="overlayState.draft.icon" placeholder="emoji 或图标名，如 📁" />
-        </label>
+      <div v-else-if="overlayState.kind === 'new-project'" class="overlay-body overlay-body--npm">
+        <NewProjectModalForm />
+      </div>
 
-        <p v-if="overlayState.submitError" class="form-error" data-testid="new-project-error">
-          {{ overlayState.submitError }}
-        </p>
-
-        <div class="overlay-actions">
-          <button class="secondary-button" type="button" :disabled="overlayState.submitting" @click="closeOverlay">
-            取消
-          </button>
-          <button
-            class="primary-button"
-            type="button"
-            :disabled="overlayState.submitting"
-            @click="submitNewProjectDraft"
-          >
-            {{ overlayState.submitting ? '创建中...' : '创建项目' }}
-          </button>
-        </div>
+      <div v-else-if="overlayState.kind === 'edit-project'" class="overlay-body overlay-body--npm">
+        <EditProjectModalForm />
       </div>
 
       <div v-else data-testid="action-modal" class="overlay-body">
@@ -125,6 +88,10 @@ function onKeydown(event: KeyboardEvent) {
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
 }
 
+.overlay-panel--wide {
+  width: min(960px, 100%);
+}
+
 .overlay-header {
   display: flex;
   align-items: flex-start;
@@ -159,6 +126,10 @@ function onKeydown(event: KeyboardEvent) {
   padding: 20px 24px 24px;
 }
 
+.overlay-body--npm {
+  padding-top: 12px;
+}
+
 .overlay-list-item {
   padding: 14px 16px;
   border: 1px solid rgba(229, 231, 235, 0.9);
@@ -167,48 +138,6 @@ function onKeydown(event: KeyboardEvent) {
   line-height: 1.7;
 }
 
-.form-body {
-  gap: 16px;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.form-field input,
-.form-field select,
-.form-field textarea {
-  width: 100%;
-  border: 1px solid rgba(209, 213, 219, 0.95);
-  border-radius: 14px;
-  padding: 12px 14px;
-  font: inherit;
-}
-
-.field-hint,
-.form-error {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.field-hint {
-  color: var(--text-subtle);
-  font-weight: 400;
-}
-
-.form-error {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(240, 68, 56, 0.08);
-  color: var(--danger);
-}
-
-.overlay-actions,
 .overlay-shortcuts {
   display: flex;
   gap: 12px;
@@ -216,32 +145,14 @@ function onKeydown(event: KeyboardEvent) {
   flex-wrap: wrap;
 }
 
-.secondary-button,
-.shortcut-link,
-.primary-button {
+.shortcut-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   padding: 10px 16px;
   box-shadow: var(--shadow-soft);
-}
-
-.secondary-button,
-.shortcut-link {
   border: 1px solid rgba(17, 24, 39, 0.08);
   background: rgba(255, 255, 255, 0.75);
-}
-
-.primary-button {
-  border: none;
-  background: linear-gradient(135deg, #4f6ef7 0%, #5d7bff 100%);
-  color: white;
-}
-
-.secondary-button:disabled,
-.primary-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
 }
 </style>

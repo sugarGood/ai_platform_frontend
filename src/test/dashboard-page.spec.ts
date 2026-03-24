@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import DashboardPage from '../features/dashboard/DashboardPage.vue'
+import { jsonEnvelope } from './mock-api-envelope'
 
 function stubProjectsFetch() {
   vi.stubGlobal(
@@ -10,10 +11,22 @@ function stubProjectsFetch() {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.url
       if (url.includes('/projects') && url.includes('page=')) {
-        return new Response(
-          JSON.stringify({ data: [], total: 0, page: 1, size: 500 }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        )
+        return new Response(jsonEnvelope({ data: [], total: 0, page: 1, size: 500 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/users')) {
+        return new Response(jsonEnvelope([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/usage-events')) {
+        return new Response(jsonEnvelope({ data: [], total: 0, page: 1, size: 100 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
       return new Response('not found', { status: 404 })
     }),
@@ -43,6 +56,5 @@ describe('DashboardPage', () => {
 
     expect(wrapper.find('[data-testid="dashboard-page"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('本月 Token 消耗')
-    expect(wrapper.find('[data-testid="dashboard-activity-card"]').exists()).toBe(true)
   })
 })

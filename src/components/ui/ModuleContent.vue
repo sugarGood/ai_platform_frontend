@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import type {
   CatalogItem,
+  KnowledgeOverviewRow,
   ModuleSection,
   PageAction,
   TableCell,
@@ -50,9 +52,103 @@ function actionTestId(label: string) {
   return `module-action-${label}`
 }
 
-// ?? section ?????????????????????????????
-function resolveActionContext(section: ModuleSection) {
-  if ('title' in section && typeof section.title === 'string') {
+function knowledgeActionTestId(row: KnowledgeOverviewRow, action: string) {
+  return `knowledge-row-action-${row.name}-${action}`
+}
+
+const knowledgeView = ref<'global' | 'project' | 'rag'>('global')
+const knowledgeQuery = ref('')
+const knowledgeCategory = ref('全部分类')
+const knowledgeScope = ref('全局 + 项目（商城系统）')
+
+function knowledgeActionLabel(label: string) {
+  if (label === '上传文档') return '+ 上传文档'
+  if (label === '检索测试') return '🔍 检索测试'
+  return label
+}
+
+function filterGlobalKnowledgeRows(rows: KnowledgeOverviewRow[], query: string, category: string) {
+  let out = rows
+  const q = query.trim()
+  if (q) {
+    out = out.filter((r) => {
+      return (
+        r.name?.includes(q) ||
+        r.category?.text?.includes(q) ||
+        r.injectMode?.text?.includes(q) ||
+        r.updatedAt?.includes(q)
+      )
+    })
+  }
+  if (category && category !== '全部分类') {
+    out = out.filter((r) => r.category?.text === category)
+  }
+  return out
+}
+
+const projectKnowledgeRows = [
+  {
+    name: '商城需求文档 v2.3',
+    type: { text: '需求', tone: 'primary' as const },
+    chunks: '248 块',
+    status: { text: '已向量化', tone: 'success' as const },
+    uploader: '张三',
+    updatedAt: '2026-03-06',
+    actions: ['查看', '删除'],
+  },
+  {
+    name: '原型图 v1.5',
+    type: { text: '原型', tone: 'warning' as const },
+    chunks: '62 块',
+    status: { text: '已向量化', tone: 'success' as const },
+    uploader: '产品部',
+    updatedAt: '2026-03-05',
+    actions: ['查看', '删除'],
+  },
+  {
+    name: '系统架构设计文档',
+    type: { text: '技术', tone: 'success' as const },
+    chunks: '—',
+    status: { text: '向量化中', tone: 'warning' as const },
+    uploader: '王五',
+    updatedAt: '2026-03-19',
+    actions: ['处理中...'],
+  },
+]
+
+const ragPipelineNodes = [
+  '文档解析（Apache Tika）',
+  '智能分块（语义分块）',
+  'Embedding（BGE-M3）',
+  '向量存储（pgvector）',
+  'Reranking（BGE-Reranker）',
+]
+
+const activeKnowledgeRows = computed(() => {
+  let rows = sectionRowsFilter(
+    projectKnowledgeRows,
+    (row) => row.name.includes(knowledgeQuery.value) || row.type.text.includes(knowledgeQuery.value),
+  )
+  const cat = knowledgeCategory.value
+  if (cat && cat !== '全部分类') {
+    rows = rows.filter((row) => row.type.text === cat)
+  }
+  return rows
+})
+
+function sectionRowsFilter<T>(rows: T[], checker: (row: T) => boolean) {
+  if (!knowledgeQuery.value.trim()) {
+    return rows
+  }
+
+  return rows.filter((row) => checker(row))
+}
+
+function resolveActionContext(section: ModuleSection, itemTitle?: string) {
+  if (itemTitle) {
+    return itemTitle
+  }
+  if ('title' in section && typeof section.title === 'string' && section.title) {
     return section.title
   }
 
@@ -63,16 +159,28 @@ function resolveActionContext(section: ModuleSection) {
   return undefined
 }
 
-// ?????????????????????? overlay composable ?????
-function handleActionClick(action: PageAction, section: ModuleSection) {
-  triggerModuleAction(action.label, resolveActionContext(section))
+function handleActionClick(action: PageAction, section: ModuleSection, itemTitle?: string) {
+  triggerModuleAction(action.label, resolveActionContext(section, itemTitle))
+}
+
+function handleKnowledgeRagConfig(section: ModuleSection) {
+  if (section.type !== 'knowledge-overview') return
+  triggerModuleAction(section.quickActionLabel, resolveActionContext(section))
 }
 </script>
 
 <template>
   <div class="module-content">
     <template v-for="(section, index) in sections" :key="`${section.type}-${index}`">
-      <section v-if="section.type === 'hero'" class="module-hero">
+      <section v-if="section.type === 'callout'" class="module-callout">
+        <span class="module-callout-icon" aria-hidden="true">💡</span>
+        <p class="module-callout-text">
+          <strong>{{ section.emphasis }}</strong>
+          {{ section.body }}
+        </p>
+      </section>
+
+      <section v-else-if="section.type === 'hero'" class="module-hero">
         <div>
           <div v-if="section.eyebrow" class="module-eyebrow">{{ section.eyebrow }}</div>
           <h1 v-if="section.title" class="module-title">{{ section.title }}</h1>
@@ -161,6 +269,19 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
       </section>
 
       <CardPanel v-else-if="section.type === 'table'" :badge="section.badge" :title="section.title">
+        <template v-if="section.actions?.length" #header-extra>
+          <div class="table-header-actions">
+            <button
+              v-for="action in section.actions"
+              :key="action.label"
+              :class="actionClass(action)"
+              type="button"
+              @click="handleActionClick(action, section)"
+            >
+              {{ action.label }}
+            </button>
+          </div>
+        </template>
         <div class="table-shell">
           <table class="module-table">
             <thead>
@@ -179,6 +300,213 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
         </div>
         <div v-if="section.note" class="table-note">{{ section.note }}</div>
       </CardPanel>
+
+      <section v-else-if="section.type === 'knowledge-overview'" class="knowledge-overview">
+        <header class="knowledge-overview-head">
+          <h1 class="knowledge-title">{{ section.title }}</h1>
+        </header>
+
+        <section class="module-metrics">
+          <StatCard
+            v-for="metric in section.metrics"
+            :key="metric.id"
+            :delta="metric.delta"
+            :icon="metric.icon"
+            :label="metric.label"
+            :tone="metric.tone"
+            :value="metric.value"
+          />
+        </section>
+
+        <!-- 效果图：单行工具栏 — 左：搜索+分类 | 中：弹性空白 | 右：RAG 配置 + 上传 + 检索测试 -->
+        <div class="knowledge-toolbar-bar">
+          <input
+            v-model="knowledgeQuery"
+            class="knowledge-search"
+            :placeholder="section.searchPlaceholder"
+            type="text"
+          />
+          <select v-model="knowledgeCategory" class="knowledge-select knowledge-select--fixed">
+            <option v-for="option in section.categoryOptions" :key="option" :value="option">{{ option }}</option>
+          </select>
+          <div class="knowledge-toolbar-spacer" aria-hidden="true" />
+          <button class="knowledge-rag-config-btn" type="button" @click="handleKnowledgeRagConfig(section)">
+            <span class="knowledge-rag-config-icon" aria-hidden="true">⚙️</span>
+            {{ section.quickActionLabel }}
+          </button>
+          <template v-if="section.actions?.length">
+            <button
+              v-for="action in section.actions"
+              :key="action.label"
+              :class="['knowledge-btn', action.variant === 'primary' ? 'primary' : '']"
+              :data-testid="actionTestId(action.label)"
+              type="button"
+              @click="handleActionClick(action, section)"
+            >
+              {{ knowledgeActionLabel(action.label) }}
+            </button>
+          </template>
+        </div>
+
+        <!-- 效果图：三个等宽 Tab（全局 / 项目 / RAG） -->
+        <div class="knowledge-tabs" role="tablist" aria-label="知识库视图">
+          <button
+            class="knowledge-tab"
+            :class="{ active: knowledgeView === 'global' }"
+            role="tab"
+            :aria-selected="knowledgeView === 'global'"
+            type="button"
+            @click="knowledgeView = 'global'"
+          >
+            🌐 全局知识库
+          </button>
+          <button
+            class="knowledge-tab"
+            :class="{ active: knowledgeView === 'project' }"
+            role="tab"
+            :aria-selected="knowledgeView === 'project'"
+            type="button"
+            @click="knowledgeView = 'project'"
+          >
+            📁 项目知识库
+          </button>
+          <button
+            class="knowledge-tab"
+            :class="{ active: knowledgeView === 'rag' }"
+            role="tab"
+            :aria-selected="knowledgeView === 'rag'"
+            type="button"
+            @click="knowledgeView = 'rag'"
+          >
+            ⚙️ RAG 流水线
+          </button>
+        </div>
+
+        <CardPanel v-if="knowledgeView === 'global'" class="knowledge-table-panel" title="">
+          <div class="table-shell">
+            <table class="module-table">
+              <thead>
+                <tr>
+                  <th v-for="column in section.table.columns" :key="column">{{ column }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in filterGlobalKnowledgeRows(section.table.rows, knowledgeQuery, knowledgeCategory)"
+                  :key="row.name"
+                >
+                  <td>{{ row.name }}</td>
+                  <td><span :class="tableCellClass(row.category)">{{ row.category.text }}</span></td>
+                  <td>{{ row.chunks }}</td>
+                  <td>{{ row.hitCount }}</td>
+                  <td>{{ row.linkedProjects }}</td>
+                  <td><span :class="tableCellClass(row.injectMode)">{{ row.injectMode.text }}</span></td>
+                  <td>{{ row.updatedAt }}</td>
+                  <td class="knowledge-actions-cell">
+                    <button
+                      v-for="action in row.actions ?? []"
+                      :key="action"
+                      class="table-inline-action"
+                      :data-testid="knowledgeActionTestId(row, action)"
+                      type="button"
+                    >
+                      {{ action }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CardPanel>
+
+        <CardPanel v-else-if="knowledgeView === 'project'" class="knowledge-table-panel" title="商城系统">
+          <template #header-extra>
+            <button class="module-action primary knowledge-project-upload" type="button">+ 上传文档</button>
+          </template>
+          <div class="table-shell">
+            <table class="module-table">
+              <thead>
+                <tr>
+                  <th>文档名称</th>
+                  <th>类型</th>
+                  <th>分块数</th>
+                  <th>状态</th>
+                  <th>上传者</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in activeKnowledgeRows" :key="row.name">
+                  <td>{{ row.name }}</td>
+                  <td><span :class="tableCellClass(row.type)">{{ row.type.text }}</span></td>
+                  <td>{{ row.chunks }}</td>
+                  <td><span :class="tableCellClass(row.status)">{{ row.status.text }}</span></td>
+                  <td>{{ row.uploader }}</td>
+                  <td>{{ row.updatedAt }}</td>
+                  <td class="knowledge-actions-cell">
+                    <button v-for="action in row.actions" :key="action" class="table-inline-action" type="button">
+                      {{ action }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CardPanel>
+
+        <section v-else class="rag-grid">
+          <CardPanel class="knowledge-table-panel" title="RAG Pipeline 状态">
+            <div class="rag-status-head">
+              <span>运行中</span>
+            </div>
+            <div class="rag-status-list">
+              <div v-for="node in ragPipelineNodes" :key="node" class="rag-status-row">
+                <span>{{ node }}</span>
+                <span class="tone-success">正常</span>
+              </div>
+            </div>
+            <div class="rag-metrics">
+              <div class="rag-metric-row"><span>今日处理文档</span><strong>12 个</strong></div>
+              <div class="rag-metric-row"><span>平均检索耗时</span><strong>8.3 s / 次</strong></div>
+              <div class="rag-metric-row"><span>队列等待处理</span><strong>2 个</strong></div>
+            </div>
+          </CardPanel>
+
+          <CardPanel class="knowledge-table-panel" title="检索测试">
+            <div class="rag-form">
+              <label class="rag-label" for="rag-query-input">输入测试 Query</label>
+              <input
+                id="rag-query-input"
+                v-model="knowledgeQuery"
+                class="knowledge-search rag-query-input"
+                placeholder="例：如何处理支付回调异常？"
+                type="text"
+              />
+              <label class="rag-label" for="rag-scope-select">检索范围</label>
+              <select id="rag-scope-select" v-model="knowledgeScope" class="knowledge-select">
+                <option>全局 + 项目（商城系统）</option>
+                <option>仅全局知识库</option>
+                <option>仅项目知识库</option>
+              </select>
+              <button class="module-action primary rag-submit-btn" type="button">执行检索</button>
+            </div>
+            <div class="rag-result-wrap">
+              <div class="rag-result-title">检索结果预览：</div>
+              <div class="rag-result-item">
+                <div class="rag-result-name">《全局开发手册 · 第 4.2 节》</div>
+                <div class="rag-result-desc">支付回调需验签名，防止重放攻击。建议使用幂等 Key。</div>
+                <div class="rag-result-score">相关度 0.92</div>
+              </div>
+              <div class="rag-result-item">
+                <div class="rag-result-name">《商城需求文档 v2.3 · 支付模块》</div>
+                <div class="rag-result-desc">支付回调接口需在 30 秒内完成，超时自动重试 3 次。</div>
+                <div class="rag-result-score">相关度 0.87</div>
+              </div>
+            </div>
+          </CardPanel>
+        </section>
+      </section>
 
       <CardPanel v-else-if="section.type === 'progress'" :badge="section.badge" :title="section.title">
         <div class="progress-list">
@@ -228,6 +556,14 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
             {{ action.label }}
           </button>
         </div>
+        <div
+          v-if="section.footerNote"
+          class="note-bubble code-footer-note"
+          :class="toneClass(section.footerNote.tone)"
+        >
+          <strong v-if="section.footerNote.label">{{ section.footerNote.label }}</strong>
+          {{ section.footerNote.content }}
+        </div>
       </CardPanel>
 
       <CardPanel v-else-if="section.type === 'kanban'" :title="section.title">
@@ -254,7 +590,27 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
       </CardPanel>
 
       <section v-else-if="section.type === 'split'" class="module-grid" :class="gridClass(section.columns)">
-        <CardPanel v-for="item in section.items" :key="item.title" :badge="item.badge" :title="item.title">
+        <CardPanel
+          v-for="item in section.items"
+          :key="item.title"
+          :badge="item.badge"
+          :panel-tone="item.panelTone"
+          :subtitle="item.subtitle"
+          :title="item.title"
+        >
+          <template v-if="item.headerActions?.length" #header-extra>
+            <div class="split-header-actions">
+              <button
+                v-for="action in item.headerActions"
+                :key="action.label"
+                :class="actionClass(action)"
+                type="button"
+                @click="handleActionClick(action, section, item.title)"
+              >
+                {{ action.label }}
+              </button>
+            </div>
+          </template>
           <div v-if="item.lines?.length" class="catalog-lines">
             <div v-for="line in item.lines" :key="`${item.title}-${line.label}`" class="info-row">
               <span class="info-label">{{ line.label }}</span>
@@ -289,7 +645,33 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
             </div>
           </div>
 
-          <pre v-if="item.code" class="code-block compact"><code>{{ item.code }}</code></pre>
+          <div v-if="item.code && item.codeActions?.length" class="credential-code-row">
+            <pre class="code-block compact credential-snippet"><code>{{ item.code }}</code></pre>
+            <div class="credential-code-actions">
+              <button
+                v-for="action in item.codeActions"
+                :key="action.label"
+                :class="actionClass(action)"
+                type="button"
+                @click="handleActionClick(action, section, item.title)"
+              >
+                {{ action.label }}
+              </button>
+            </div>
+          </div>
+          <pre v-else-if="item.code" class="code-block compact"><code>{{ item.code }}</code></pre>
+
+          <p v-if="item.tagsLabel" class="workspace-tags-label">{{ item.tagsLabel }}</p>
+          <div v-if="item.tags?.length" class="workspace-tag-row">
+            <span
+              v-for="(tag, ti) in item.tags"
+              :key="`${item.title}-tag-${ti}`"
+              class="badge-pill"
+              :class="toneClass(tag.tone)"
+            >
+              {{ tag.text }}
+            </span>
+          </div>
 
           <div v-if="item.actions?.length" class="module-actions inside">
             <button
@@ -297,6 +679,7 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
               :key="action.label"
               :class="actionClass(action)"
               type="button"
+              @click="handleActionClick(action, section, item.title)"
             >
               {{ action.label }}
             </button>
@@ -312,6 +695,73 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.module-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--primary-light);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+}
+
+.module-callout-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.module-callout-text {
+  margin: 0;
+}
+
+.table-header-actions,
+.split-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.credential-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+.credential-snippet {
+  flex: 1;
+  min-width: 0;
+  margin: 0 !important;
+}
+
+.credential-code-actions {
+  flex-shrink: 0;
+}
+
+.workspace-tags-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-muted, #667085);
+}
+
+.workspace-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.code-footer-note {
+  margin-top: 14px;
 }
 
 .module-hero {
@@ -345,6 +795,315 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
   margin: 12px 0 10px;
   font-size: 34px;
   line-height: 1.1;
+}
+
+.knowledge-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.knowledge-overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.knowledge-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* 效果图单行工具栏：左固定控件 + 中间撑开 + 右侧操作成组 */
+.knowledge-toolbar-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 0;
+  min-width: 0;
+}
+
+.knowledge-toolbar-spacer {
+  flex: 1 1 auto;
+  min-width: 16px;
+  height: 1px;
+}
+
+.knowledge-rag-config-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: white;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.knowledge-rag-config-btn:hover {
+  background: #f8fafc;
+}
+
+.knowledge-rag-config-icon {
+  color: #6941c6;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* 三个等宽 Tab，对齐原型 .tabs / .tab */
+.knowledge-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.knowledge-tab {
+  flex: 1;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.knowledge-tab.active {
+  background: #fff;
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.knowledge-select--fixed {
+  width: auto;
+  min-width: 120px;
+  max-width: 200px;
+  flex: 0 0 auto;
+}
+
+.knowledge-search,
+.knowledge-select,
+.knowledge-mini-btn,
+.table-inline-action {
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 8px;
+  background: white;
+  color: var(--text-main);
+  font: inherit;
+  font-size: 13px;
+}
+
+.knowledge-search {
+  width: 320px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  flex: 0 1 auto;
+}
+
+.knowledge-select {
+  padding: 8px 12px;
+  flex: 0 0 auto;
+}
+
+.knowledge-mini-btn {
+  padding: 7px 14px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  background: white;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.knowledge-mini-btn:hover {
+  background: #f8fafc;
+}
+
+.knowledge-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: white;
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.knowledge-btn:hover {
+  background: #f8fafc;
+}
+
+.knowledge-btn.primary {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+
+.knowledge-table-panel :deep(.card-panel-header) {
+  display: none;
+}
+
+.knowledge-table-panel :deep(.card-panel-title) {
+  font-size: 20px;
+}
+
+.knowledge-table-panel :deep(.card-panel) {
+  border-radius: 14px;
+}
+
+.knowledge-project-upload {
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.rag-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.rag-status-head {
+  margin-bottom: 10px;
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rag-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rag-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.75);
+  padding-bottom: 8px;
+  font-size: 13px;
+}
+
+.rag-metrics {
+  margin-top: 14px;
+  border: 1px solid rgba(229, 231, 235, 0.85);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.rag-metric-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.rag-metric-row + .rag-metric-row {
+  margin-top: 8px;
+}
+
+.rag-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rag-label {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.rag-query-input {
+  width: 100%;
+}
+
+.rag-submit-btn {
+  border-radius: 10px;
+  justify-content: center;
+  box-shadow: none;
+}
+
+.rag-result-wrap {
+  margin-top: 14px;
+}
+
+.rag-result-title {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.rag-result-item {
+  border: 1px solid rgba(229, 231, 235, 0.85);
+  border-left: 3px solid rgba(91, 109, 245, 0.65);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.rag-result-item + .rag-result-item {
+  margin-top: 8px;
+}
+
+.rag-result-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rag-result-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.rag-result-score {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--success);
+}
+
+.table-inline-action {
+  margin-right: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  background: #fff;
+  font-weight: 500;
+}
+
+.table-inline-action:last-child {
+  margin-right: 0;
+}
+
+.knowledge-actions-cell {
+  white-space: nowrap;
+  text-align: right;
 }
 
 .module-description,
@@ -535,15 +1294,15 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
 
 .module-table th,
 .module-table td {
-  padding: 12px 10px;
+  padding: 11px 10px;
   border-bottom: 1px solid rgba(229, 231, 235, 0.9);
   text-align: left;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .module-table th {
   color: var(--text-subtle);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -685,6 +1444,14 @@ function handleActionClick(action: PageAction, section: ModuleSection) {
   .grid-three,
   .kanban-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rag-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-search {
+    width: 100%;
   }
 }
 

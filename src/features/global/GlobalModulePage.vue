@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ModuleContent from '../../components/ui/ModuleContent.vue'
+import GlobalKnowledgeWorkspace from './GlobalKnowledgeWorkspace.vue'
 import { prototypeGlobalPagesExtra } from '../../mocks/prototypeGlobalPagesExtra'
+import { listSkills } from '../../services/skills'
 import type { ModulePageConfig, TableCell } from '../../types/module-page'
+
+const skillList = ref<Awaited<ReturnType<typeof listSkills>>>([])
+
+onMounted(async () => {
+  try { skillList.value = await listSkills() } catch { /* non-critical */ }
+})
 
 const route = useRoute()
 
@@ -296,7 +304,7 @@ const pageConfigs: Record<string, ModulePageConfig> = {
             subtitle: 'PRD 上传 → 拆分 Epic / Story / Task → 估算 SP',
             badge: '产品协同',
             tone: 'primary',
-            description: '支持多轮 refinement，并输出 Sprint backlog 草案。',
+            description: '支持多轮 refinement，并输出待办与需求草案。',
           },
         ],
       },
@@ -431,7 +439,7 @@ const pageConfigs: Record<string, ModulePageConfig> = {
           { id: 'review', icon: '🧪', label: 'Code Review 准确率', value: '91', delta: 'A 级 · 较上月 +3%', tone: 'success' },
           { id: 'bug', icon: '🩺', label: 'Bug 诊断准确率', value: '87', delta: 'A 级 · 较上月 +5%', tone: 'success' },
           { id: 'req', icon: '🗂️', label: '需求拆分质量', value: '76', delta: 'B 级 · 基本持平', tone: 'primary' },
-          { id: 'predict', icon: '📉', label: 'Sprint 预测准确率', value: '68', delta: 'C 级 · 较上月 -4%', tone: 'warning' },
+          { id: 'predict', icon: '📉', label: '迭代预测准确率', value: '68', delta: 'C 级 · 较上月 -4%', tone: 'warning' },
         ],
       },
       {
@@ -502,42 +510,6 @@ const pageConfigs: Record<string, ModulePageConfig> = {
       },
     ],
   },
-  knowledge: {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Knowledge Base',
-        title: '全局知识库',
-        description: '统一沉淀规范、架构、原型和运营手册，为 Agent 和项目提供共享语义检索。',
-        actions: [
-          { label: '上传文档', variant: 'primary' },
-          { label: '查看索引策略' },
-        ],
-      },
-      {
-        type: 'metrics',
-        items: [
-          { id: 'docs', icon: '📚', label: '已收录文档', value: '486', delta: '本周新增 32 份', tone: 'primary' },
-          { id: 'search', icon: '🔎', label: '今日检索', value: '1,284', delta: 'Agent 调用占 74%', tone: 'success' },
-          { id: 'coverage', icon: '🧠', label: '规范覆盖率', value: '92%', delta: '安全与前端规范已补齐', tone: 'success' },
-          { id: 'latency', icon: '⚙️', label: '平均召回耗时', value: '182ms', delta: '混合检索开启后更稳定', tone: 'primary' },
-        ],
-      },
-      {
-        type: 'table',
-        title: '知识资产',
-        table: {
-          columns: ['文件名', '类型', '范围', '上传者', '更新时间'],
-          rows: [
-            [cell('安全规范手册 v3.2'), cell('规范'), cell('全局'), cell('安全团队'), cell('03-12')],
-            [cell('前端设计系统说明'), cell('设计'), cell('全局'), cell('设计平台'), cell('03-11')],
-            [cell('AI 工作流接入指南'), cell('技术'), cell('全局'), cell('AI 平台'), cell('03-09')],
-            [cell('商城系统原型图'), cell('原型'), cell('项目共享'), cell('产品部'), cell('03-08')],
-          ],
-        },
-      },
-    ],
-  },
   skills: {
     sections: [
       {
@@ -556,7 +528,7 @@ const pageConfigs: Record<string, ModulePageConfig> = {
         items: [
           { icon: '🧪', title: '代码审查 Skill', subtitle: 'PR 场景标准审查流程', badge: '活跃', tone: 'success', description: '覆盖安全、规范、性能三个子分支。' },
           { icon: '🩺', title: '事故排障 Skill', subtitle: '结合日志与知识库定位根因', badge: '平台级', tone: 'primary', description: '已接入 SRE 值班流程，支持自动生成修复建议。' },
-          { icon: '📋', title: '需求拆分 Skill', subtitle: 'PRD → Story → Task', badge: '产品协同', tone: 'primary', description: '支持生成 Sprint backlog 和评审 checklist。' },
+          { icon: '📋', title: '需求拆分 Skill', subtitle: 'PRD → Story → Task', badge: '产品协同', tone: 'primary', description: '支持生成待办清单与评审 checklist。' },
         ],
       },
       {
@@ -735,13 +707,61 @@ const pageKey = computed(() =>
   typeof route.params.pageKey === 'string' ? route.params.pageKey : 'default',
 )
 
-// ???????????????????????????
-const pageConfig = computed(() => pageConfigs[pageKey.value] ?? pageConfigs.default)
+// Live skills config
+const liveSkillsConfig = computed<ModulePageConfig>(() => {
+  const skills = skillList.value
+  const published = skills.filter((s) => s.status === 'PUBLISHED')
+  const draft = skills.filter((s) => s.status === 'DRAFT')
+  return {
+    sections: [
+      {
+        type: 'hero',
+        eyebrow: 'Skill Library',
+        title: '全局技能库',
+        description: '管理可分发到 IDE 和 Agent 的技能集合，统一维护提示词、流程和能力边界。',
+        actions: [{ label: '创建 Skill', variant: 'primary' }, { label: '查看发布记录' }],
+      },
+      {
+        type: 'metrics',
+        items: [
+          { id: 'total', icon: '⚡', label: '技能总数', value: String(skills.length), delta: `已发布 ${published.length} · 草稿 ${draft.length}`, tone: 'primary' },
+          { id: 'published', icon: '✅', label: '已发布', value: String(published.length), delta: '可在 IDE 和 Agent 中使用', tone: 'success' },
+          { id: 'draft', icon: '📝', label: '草稿', value: String(draft.length), delta: '待发布', tone: 'warning' },
+          { id: 'usage', icon: '📊', label: '总使用次数', value: '—', delta: '历史调用累计', tone: 'primary' },
+        ],
+      },
+      {
+        type: 'table',
+        title: 'Skill 列表',
+        badge: '已同步',
+        table: {
+          columns: ['名称', 'Key', '分类', '范围', '状态', '使用次数'],
+          rows: skills.length > 0
+            ? skills.map((s) => [
+                cell(s.name),
+                cell(s.skillKey ?? '—', 'default', true),
+                cell(s.category ?? '—'),
+                cell(s.scope ?? '—'),
+                cell(s.status ?? '—', s.status === 'PUBLISHED' ? 'success' : s.status === 'DRAFT' ? 'warning' : 'muted'),
+                cell('—'),
+              ])
+            : [[cell('暂无数据', 'muted'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')]],
+        },
+      },
+    ],
+  }
+})
+
+const pageConfig = computed(() => {
+  if (pageKey.value === 'skills' && skillList.value.length > 0) return liveSkillsConfig.value
+  return pageConfigs[pageKey.value] ?? pageConfigs.default
+})
 </script>
 
 <template>
   <section data-testid="global-module-page">
-    <ModuleContent :sections="pageConfig?.sections ?? []" />
+    <GlobalKnowledgeWorkspace v-if="pageKey === 'knowledge'" />
+    <ModuleContent v-else :sections="pageConfig?.sections ?? []" />
   </section>
 </template>
 

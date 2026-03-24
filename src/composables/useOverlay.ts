@@ -1,10 +1,13 @@
 import { reactive } from 'vue'
 
 import router from '../router'
-import type { BackendProjectType } from '../types/project'
-import { createProject, projectTypeLabelMap } from './useProjects'
+import { enableProjectKnowledgeBase } from '../services/knowledge'
+import { addProjectMember, getProject, updateProject } from '../services/projects'
+import { enableProjectSkill } from '../services/skills'
+import type { BackendProjectResponse, BackendProjectType, UpdateBackendProjectPayload } from '../types/project'
+import { createProject, projectTypeLabelMap, refreshProjectSpaceFromApi, loadProjects } from './useProjects'
 
-export type OverlayKind = 'none' | 'notifications' | 'new-project' | 'action'
+export type OverlayKind = 'none' | 'notifications' | 'new-project' | 'edit-project' | 'action'
 
 export interface OverlayShortcut {
   label: string
@@ -17,6 +20,28 @@ interface NewProjectDraft {
   description: string
   icon: string
   type: BackendProjectType
+  team: string
+  ownerUserId: number | null
+  memberSearch: string
+  memberPickIds: number[]
+  kbSearch: string
+  skillSearch: string
+  kbPickIds: number[]
+  skillPickIds: number[]
+  tokenPoolInput: string
+}
+
+interface EditProjectDraft {
+  projectId: number
+  name: string
+  description: string
+  icon: string
+  ownerUserId: number | null
+  tokenPoolInput: string
+  alertThresholdPctInput: string
+  overQuotaStrategy: string
+  code: string
+  projectTypeLabel: string
 }
 
 interface OverlayState {
@@ -27,16 +52,59 @@ interface OverlayState {
   items: string[]
   shortcuts: OverlayShortcut[]
   draft: NewProjectDraft
+  editDraft: EditProjectDraft
+  editLoading: boolean
   submitError: string
   submitting: boolean
+}
+
+function parseMonthlyTokenQuota(raw: string): number | undefined {
+  const s = raw.trim().toUpperCase().replace(/,/g, '')
+  if (!s) return undefined
+  const m = s.match(/^([\d.]+)\s*([KMG])?\s*$/)
+  if (!m) {
+    const n = Number(s)
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined
+  }
+  const numPart = m[1]
+  if (numPart === undefined) return undefined
+  let v = parseFloat(numPart)
+  if (!Number.isFinite(v) || v < 0) return undefined
+  const u = m[2]
+  if (u === 'K') v *= 1000
+  else if (u === 'M') v *= 1_000_000
+  else if (u === 'G') v *= 1_000_000_000
+  return Math.floor(v)
 }
 
 const defaultDraft = (): NewProjectDraft => ({
   name: '',
   code: '',
   description: '',
-  icon: '',
+  icon: '📁',
   type: 'PRODUCT',
+  team: '业务研发部',
+  ownerUserId: null,
+  memberSearch: '',
+  memberPickIds: [],
+  kbSearch: '',
+  skillSearch: '',
+  kbPickIds: [],
+  skillPickIds: [],
+  tokenPoolInput: '500K',
+})
+
+const defaultEditDraft = (): EditProjectDraft => ({
+  projectId: 0,
+  name: '',
+  description: '',
+  icon: '📁',
+  ownerUserId: null,
+  tokenPoolInput: '',
+  alertThresholdPctInput: '',
+  overQuotaStrategy: '',
+  code: '',
+  projectTypeLabel: '',
 })
 
 const state = reactive<OverlayState>({
@@ -47,12 +115,16 @@ const state = reactive<OverlayState>({
   items: [],
   shortcuts: [],
   draft: defaultDraft(),
+  editDraft: defaultEditDraft(),
+  editLoading: false,
   submitError: '',
   submitting: false,
 })
 
 function resetDraft() {
   state.draft = defaultDraft()
+  state.editDraft = defaultEditDraft()
+  state.editLoading = false
   state.submitError = ''
   state.submitting = false
 }
@@ -88,12 +160,58 @@ export function openNotifications() {
 export function openNewProjectModal() {
   state.open = true
   state.kind = 'new-project'
-  state.title = '新建项目空间'
-  state.description =
-    '字段对齐后端 `POST /api/projects`：name、code、projectType 必填；description、icon、ownerUserId 可选。'
+  state.title = '新建项目'
+  state.description = '创建后可在项目内继续补充成员、代码仓库与更多配置。'
   state.items = []
   state.shortcuts = []
   resetDraft()
+}
+
+function fillEditDraftFromProjectApi(proj: BackendProjectResponse) {
+  const pt = proj.projectType?.toUpperCase() as BackendProjectType
+  const typeOk = (['PRODUCT', 'PLATFORM', 'DATA', 'OTHER'] as const).includes(pt)
+  const typeLabel = typeOk ? projectTypeLabelMap[pt] : proj.projectType
+  const q = proj.monthlyTokenQuota
+  const tokenStr =
+    q == null ? '' : q === 0 ? '0' : q >= 1_000_000_000 && q % 1_000_000_000 === 0 ? `${q / 1_000_000_000}G` : String(q)
+
+  state.editDraft = {
+    projectId: proj.id,
+    name: proj.name?.trim() ?? '',
+    description: proj.description?.trim() ?? '',
+    icon: proj.icon?.trim() || '📁',
+    ownerUserId: proj.ownerUserId ?? null,
+    tokenPoolInput: tokenStr,
+    alertThresholdPctInput:
+      proj.alertThresholdPct != null && Number.isFinite(proj.alertThresholdPct) ? String(proj.alertThresholdPct) : '',
+    overQuotaStrategy: proj.overQuotaStrategy?.trim() ?? '',
+    code: proj.code?.trim() ?? '',
+    projectTypeLabel: typeLabel,
+  }
+}
+
+export async function openEditProjectModal(projectId: string) {
+  if (!/^\d+$/.test(projectId)) return
+
+  state.open = true
+  state.kind = 'edit-project'
+  state.title = '编辑项目'
+  state.description = '修改名称、描述、负责人与 Token 配额等；项目编码与类型变更请走平台流程。'
+  state.items = []
+  state.shortcuts = []
+  state.submitError = ''
+  state.submitting = false
+  state.editDraft = defaultEditDraft()
+  state.editLoading = true
+
+  try {
+    const proj = await getProject(Number(projectId))
+    fillEditDraftFromProjectApi(proj)
+  } catch (error) {
+    state.submitError = error instanceof Error ? error.message : '加载项目信息失败'
+  } finally {
+    state.editLoading = false
+  }
 }
 
 export function openActionDialog(options: {
@@ -112,6 +230,62 @@ export function openActionDialog(options: {
   state.submitting = false
 }
 
+export async function submitEditProjectDraft() {
+  const pid = state.editDraft.projectId
+  if (!pid) {
+    state.submitError = '无效的项目。'
+    return
+  }
+
+  const name = state.editDraft.name.trim()
+  if (!name) {
+    state.submitError = '请填写项目名称。'
+    return
+  }
+
+  state.submitError = ''
+  state.submitting = true
+
+  try {
+    const desc = state.editDraft.description.trim()
+    const icon = state.editDraft.icon.trim()
+    const quota = parseMonthlyTokenQuota(state.editDraft.tokenPoolInput)
+    const alertRaw = state.editDraft.alertThresholdPctInput.trim()
+    const alertN = alertRaw === '' ? undefined : Number.parseInt(alertRaw, 10)
+    const strategy = state.editDraft.overQuotaStrategy.trim()
+
+    const payload: UpdateBackendProjectPayload = {
+      name,
+      description: desc,
+      icon: icon || null,
+      ownerUserId: state.editDraft.ownerUserId,
+    }
+
+    if (quota !== undefined) {
+      payload.monthlyTokenQuota = quota
+    }
+    if (alertRaw !== '') {
+      if (!Number.isFinite(alertN) || alertN == null || alertN < 0 || alertN > 100) {
+        state.submitError = '告警阈值请输入 0–100 之间的整数，或留空不修改。'
+        return
+      }
+      payload.alertThresholdPct = alertN
+    }
+    if (strategy) {
+      payload.overQuotaStrategy = strategy
+    }
+
+    await updateProject(pid, payload)
+    await refreshProjectSpaceFromApi(String(pid))
+    await loadProjects(true)
+    closeOverlay()
+  } catch (error) {
+    state.submitError = error instanceof Error ? error.message : '保存失败，请稍后重试。'
+  } finally {
+    state.submitting = false
+  }
+}
+
 export async function submitNewProjectDraft() {
   const name = state.draft.name.trim()
   const code = state.draft.code.trim().toUpperCase()
@@ -127,6 +301,7 @@ export async function submitNewProjectDraft() {
   try {
     const desc = state.draft.description.trim()
     const icon = state.draft.icon.trim()
+    const quota = parseMonthlyTokenQuota(state.draft.tokenPoolInput)
 
     const createdProject = await createProject({
       name,
@@ -134,13 +309,29 @@ export async function submitNewProjectDraft() {
       projectType: state.draft.type,
       ...(desc ? { description: desc } : {}),
       ...(icon ? { icon } : {}),
+      ...(state.draft.ownerUserId != null ? { ownerUserId: state.draft.ownerUserId } : {}),
+      ...(quota != null ? { monthlyTokenQuota: quota } : {}),
     })
+
+    const pid = createdProject.id
+    const ownerId = state.draft.ownerUserId
+
+    const memberIds = [...new Set(state.draft.memberPickIds)].filter((id) => id !== ownerId)
+    const tasks: Promise<unknown>[] = [
+      ...memberIds.map((userId) => addProjectMember(pid, { userId, role: 'MEMBER' })),
+      ...state.draft.kbPickIds.map((kbId) => enableProjectKnowledgeBase(pid, kbId)),
+      ...state.draft.skillPickIds.map((skillId) => enableProjectSkill(pid, skillId)),
+    ]
+
+    const settled = await Promise.allSettled(tasks)
+    const failed = settled.filter((r) => r.status === 'rejected').length
 
     const overviewPath = `/projects/${createdProject.id}/overview`
     const items = [
       `项目编码：${code}`,
       `项目类型：${projectTypeLabelMap[state.draft.type]}`,
       '项目列表已和后端重新同步。',
+      ...(failed ? [`部分成员或 AI 能力绑定未成功（${failed} 项），可在项目内继续配置。`] : []),
     ]
 
     openActionDialog({
@@ -190,9 +381,11 @@ export function useOverlay() {
     closeOverlay,
     openActionDialog,
     openNewProjectModal,
+    openEditProjectModal,
     openNotifications,
     resetOverlayState,
     submitNewProjectDraft,
+    submitEditProjectDraft,
     triggerModuleAction,
   }
 }

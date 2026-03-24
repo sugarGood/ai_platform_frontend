@@ -22,15 +22,18 @@ import {
 import type { BackendProjectType } from '../../types/project'
 import type {
   CatalogItem,
-  InfoLine,
   ListItem,
   ModulePageConfig,
+  ModuleSection,
   PageMetric,
   TableCell,
   TableData,
 } from '../../types/module-page'
 import NotFoundProjectState from './NotFoundProjectState.vue'
+import { useAuth } from '../../composables/useAuth'
 import { useKeyMonitoring } from '../../composables/useKeyMonitoring'
+import { useProjectWorkspaceApi } from '../../composables/useProjectWorkspace'
+import { buildWorkspaceModuleSections } from '../../lib/workspace-module-sections'
 
 const route = useRoute()
 
@@ -185,6 +188,36 @@ const section = computed(() =>
   typeof route.params.section === 'string' ? route.params.section : 'overview',
 )
 
+const { user } = useAuth()
+
+const workspaceRoleLabel = computed(() => {
+  const u = user.value
+  if (!u) return '开发者'
+  return u.platformRole?.trim() || u.jobTitle?.trim() || '开发者'
+})
+
+const { workspaceSections, workspaceLoading, workspaceError } = useProjectWorkspaceApi({
+  projectIdStr: computed(() => project.value?.id),
+  projectName: computed(() => project.value?.name ?? ''),
+  projectCode: computed(() => {
+    const id = project.value?.id
+    if (!id) return undefined
+    return getProjectApiSnapshot(id)?.code
+  }),
+  section,
+  userId: computed(() => user.value?.id),
+  roleLabel: workspaceRoleLabel,
+  getKnowledgeSkillToolCounts: () => {
+    const id = project.value?.id
+    if (!id) return { kb: 0, sk: 0, tl: 0 }
+    return {
+      kb: getProjectKnowledgeTableRows(id)?.length ?? 0,
+      sk: getProjectSkillTableRows(id)?.length ?? 0,
+      tl: getProjectToolTableRows(id)?.length ?? 0,
+    }
+  },
+})
+
 watch(
   () => route.params.projectId,
   (pid) => {
@@ -279,7 +312,7 @@ function keyMetricsForProject(projectId: string): PageMetric[] {
   if (api) return api
   if (projectSpaceState.loadingProjectId === projectId) {
     return [
-      { id: 'load', icon: '⏳', label: '同步中', value: '…', delta: 'projects + quotas + usage-events', tone: 'primary' },
+      { id: 'load', icon: '⏳', label: '同步中', value: '…', delta: '正在拉取项目、配额与用量', tone: 'primary' },
       { id: 'load2', icon: '⏳', label: '请稍候', value: '…', delta: '与项目详情一并刷新', tone: 'default' },
       { id: 'load3', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default' },
       { id: 'load4', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default' },
@@ -344,7 +377,7 @@ function keyManagementSplitItems(projectId: string) {
     return [
       {
         title: '最近用量事件（分页样本）',
-        list: left.length > 0 ? left : [emptyMuted('暂无事件', '当前分页内无 usage-events')],
+        list: left.length > 0 ? left : [emptyMuted('暂无事件', '当前分页内没有用量记录')],
       },
       {
         title: '本页 Top 成员（按 tokens）',
@@ -353,7 +386,7 @@ function keyManagementSplitItems(projectId: string) {
     ]
   }
   if (projectSpaceState.loadingProjectId === projectId) {
-    const loading: ListItem = { title: '正在加载用量数据…', meta: '/api/usage-events', tone: 'primary' }
+    const loading: ListItem = { title: '正在加载用量数据…', meta: '请稍候', tone: 'primary' }
     return [
       { title: '最近用量事件', list: [loading] },
       { title: 'Top 成员', list: [loading] },
@@ -405,9 +438,9 @@ function keyManagementListGridCards(projectId: string) {
       ? [
           {
             title: '存在非成功调用',
-            meta: `本页 usage-events 样本中约 ${failN} 条 status ≠ SUCCESS`,
-            description: '请结合下方「最近用量事件」排查 errorMessage。',
-            badge: 'usage-events',
+            meta: `本页用量样本中约 ${failN} 条未成功`,
+            description: '请结合下方「最近用量事件」查看失败原因说明。',
+            badge: '需关注',
             tone: 'danger' as const,
           },
         ]
@@ -423,7 +456,7 @@ function keyManagementListGridCards(projectId: string) {
   const suggestItems: ListItem[] = [
     {
       title: '成员配额',
-      meta: `member-quotas 共 ${Number.isFinite(quotaN) ? quotaN : 0} 条`,
+      meta: `成员配额共 ${Number.isFinite(quotaN) ? quotaN : 0} 条`,
       description: '与上方「成员 AI 配额」表一致，只读展示。',
       badge: '只读',
       tone: 'primary' as const,
@@ -431,7 +464,7 @@ function keyManagementListGridCards(projectId: string) {
     {
       title: '用量样本',
       meta: tokMetric ? `近页合计约 ${tokMetric.value} tokens` : '—',
-      description: tokMetric?.delta ?? '来自 GET /api/usage-events 分页。',
+      description: tokMetric?.delta ?? '按时间分页汇总的用量样本。',
       badge: '样本',
       tone: 'warning' as const,
     },
@@ -452,7 +485,7 @@ function psettingsSplitItems(projectId: string, detailName: string, typeLabel: s
         lines: [
           { label: '项目名称', value: detailName },
           { label: '项目类型', value: typeLabel },
-          { label: '当前 Sprint', value: project.value!.currentSprint },
+          { label: 'AI 能力', value: project.value!.aiCapabilityLabel },
           { label: '项目描述', value: description },
         ],
       },
@@ -504,7 +537,7 @@ function psettingsSplitItems(projectId: string, detailName: string, typeLabel: s
 
   return [
     {
-      title: '基础信息（后端 GET /api/projects/{id}）',
+      title: '基础信息',
       lines: [
         { label: '项目 ID', value: String(snap.id), mono: true },
         { label: '编码 code', value: snap.code, mono: true },
@@ -562,19 +595,85 @@ function psettingsSplitItems(projectId: string, detailName: string, typeLabel: s
   ]
 }
 
-function workspaceRecommendLines(projectId: string): InfoLine[] {
+function workspaceMcpSlug(projectId: string): string {
   const snap = getProjectApiSnapshot(projectId)
-  const tail: InfoLine[] = [
-    { label: 'Claude Code', value: 'claude mcp add --scope project', mono: true },
-    { label: 'Cursor', value: 'Settings → MCP → 导入项目模板' },
-    { label: '网关地址', value: `https://gw.example.com/p/${projectId}`, mono: true },
-  ]
-  if (!snap) return tail
-  return [
-    { label: '项目 ID', value: String(snap.id), mono: true },
-    { label: '项目编码', value: snap.code, mono: true },
-    ...tail,
-  ]
+  const code = snap?.code != null ? String(snap.code).trim() : ''
+  if (code) {
+    const slug = code.replace(/[^a-zA-Z0-9_-]/g, '_')
+    return slug || `proj_${projectId}`
+  }
+  if (isNumericBackendProject(projectId)) {
+    return `proj_${projectId}`
+  }
+  return 'proj_mall'
+}
+
+function buildWorkspaceSections(projectId: string, projectName: string): ModuleSection[] {
+  const slug = workspaceMcpSlug(projectId)
+  const base = 'https://ai-platform.com'
+  return buildWorkspaceModuleSections({
+    credentialSubtitle: '凭证有效期至 2026-06-19 · 角色：开发者',
+    credentialCodeDisplay: 'plt_zhang3_8f2a91c4d7e6b350',
+    credentialBadge: '✅ 已授权',
+    knowledgeCountLabel: '12',
+    skillCountLabel: '4',
+    toolCountLabel: '8',
+    integrationCountLabel: '3',
+    projectMcpUrl: `${base}/mcp/project/${slug}`,
+    globalMcpUrl: `${base}/mcp/global`,
+    proxyUrl: `${base}/proxy/anthropic`,
+    platformMcpKey: `platform-${projectName}`,
+    memberRows: [
+      [
+        cell('张三'),
+        cell('技术负责人'),
+        cell('有效', 'success'),
+        cell('✅ 已接入', 'success'),
+        cell('5 分钟前'),
+        cell('详情'),
+      ],
+      [
+        cell('李四'),
+        cell('前端开发'),
+        cell('有效', 'success'),
+        cell('✅ 已接入', 'success'),
+        cell('20 分钟前'),
+        cell('详情'),
+      ],
+      [
+        cell('王五'),
+        cell('后端开发'),
+        cell('3天后过期', 'warning'),
+        cell('✅ 已接入', 'success'),
+        cell('1 小时前'),
+        cell('详情 · 提醒续签'),
+      ],
+      [
+        cell('赵六'),
+        cell('测试工程师'),
+        cell('有效', 'success'),
+        cell('📦 未接入', 'muted'),
+        cell('—'),
+        cell('详情 · 发送指南'),
+      ],
+      [
+        cell('钱七'),
+        cell('产品经理'),
+        cell('有效', 'success'),
+        cell('✅ 已接入', 'success'),
+        cell('今天 14:00'),
+        cell('详情'),
+      ],
+      [
+        cell('ci-bot-mall（🤖 服务账号）'),
+        cell('CI/CD'),
+        cell('有效', 'success'),
+        cell('✅ 运行中', 'success'),
+        cell('2 分钟前'),
+        cell('详情'),
+      ],
+    ],
+  })
 }
 
 function aiCapCatalogItems(projectId: string): CatalogItem[] {
@@ -701,14 +800,14 @@ const pageConfig = computed<ModulePageConfig>(() => {
       sections: [
         {
           type: 'hero',
-          eyebrow: `${project.value.name} / Agile`,
+          eyebrow: `${project.value.name} / 协作`,
           title: '研发流程',
           description: isNumericBackendProject(projectId)
-            ? '以下为 Sprint / Backlog / 燃尽等静态演示，后端暂无 Agile 类接口；接入需求管理后再替换。'
-            : '查看当前 Sprint、Backlog、燃尽进度和 AI 生成的迭代回顾建议。',
+            ? '任务与迭代看板能力规划中；接入需求管理后将在此展示列表与进度。'
+            : '查看需求拆分、任务流转与协作进展（原型演示）。',
           actions: [
-            { label: '新建 Sprint 任务', variant: 'primary' },
-            { label: '生成 AI 回顾' },
+            { label: '新建任务', variant: 'primary' },
+            { label: '生成摘要' },
           ],
         },
         ...(isNumericBackendProject(projectId)
@@ -728,15 +827,15 @@ const pageConfig = computed<ModulePageConfig>(() => {
         {
           type: 'metrics',
           items: [
-            { id: 'sprint', icon: '🏃', label: '当前 Sprint', value: project.value.currentSprint, delta: project.value.sprintProgress, tone: 'primary' },
-            { id: 'backlog', icon: '🗂️', label: 'Backlog', value: '18', delta: '高优先级需求 5 项', tone: 'primary' },
-            { id: 'burn', icon: '🔥', label: '燃尽健康度', value: '82%', delta: '略快于计划线', tone: 'success' },
+            { id: 'open', icon: '📥', label: '待处理', value: '18', delta: '高优先级 5 项', tone: 'primary' },
+            { id: 'doing', icon: '⚙️', label: '进行中', value: '8', delta: '本周重点 3 项', tone: 'primary' },
+            { id: 'health', icon: '📈', label: '进度健康度', value: '82%', delta: '略快于计划', tone: 'success' },
             { id: 'blocked', icon: '🚧', label: '阻塞项', value: '2', delta: '集中在跨服务联调', tone: 'warning' },
           ],
         },
         {
           type: 'kanban',
-          title: 'Sprint 看板',
+          title: '任务看板',
           columns: [
             {
               title: '待开始',
@@ -771,44 +870,60 @@ const pageConfig = computed<ModulePageConfig>(() => {
       ],
     },
     workspace: {
-      sections: [
-        {
-          type: 'hero',
-          eyebrow: `${project.value.name} / Access`,
-          title: '接入与凭证',
-          description:
-            '配置 IDE / Agent 接入方式、项目级 MCP 入口与成员凭证分发策略；与平台「一人一证」模型联动。',
-          actions: [
-            { label: '生成接入指引', variant: 'primary' },
-            { label: '查看 MCP 端点' },
-          ],
-        },
-        {
-          type: 'split',
-          columns: 2,
-          items: [
+      sections: (() => {
+        const name = project.value.name
+        if (!isNumericBackendProject(projectId)) {
+          return buildWorkspaceSections(projectId, name)
+        }
+        if (user.value?.id == null) {
+          return [
             {
-              title: '推荐接入',
-              lines: workspaceRecommendLines(projectId),
-            },
-            {
-              title: '凭证策略',
+              type: 'notes' as const,
+              title: '接入与凭证',
               notes: [
                 {
-                  label: '说明',
-                  content: '成员沿用平台凭证，进入项目即自动扩展可见工具与知识库范围。',
-                  tone: 'primary',
-                },
-                {
-                  label: '注意',
-                  content: '生产环境工具默认需要审批链；配额受项目池与个人上限双重约束。',
-                  tone: 'warning',
+                  content: '请先登录后加载与当前用户关联的平台凭证及项目 MCP 配置。',
+                  tone: 'primary' as const,
                 },
               ],
             },
-          ],
-        },
-      ],
+          ]
+        }
+        if (workspaceLoading.value) {
+          return [
+            {
+              type: 'notes' as const,
+              title: '接入与凭证',
+              notes: [
+                {
+                  content: '正在从后端加载凭证、成员与 MCP 集成…',
+                  tone: 'primary' as const,
+                },
+              ],
+            },
+          ]
+        }
+        if (workspaceError.value) {
+          return [
+            {
+              type: 'notes' as const,
+              title: '接口提示',
+              notes: [
+                { content: workspaceError.value, tone: 'danger' as const },
+                {
+                  content: '下方为演示数据，便于对照布局；接口恢复后将自动展示真实数据。',
+                  tone: 'warning' as const,
+                },
+              ],
+            },
+            ...buildWorkspaceSections(projectId, name),
+          ]
+        }
+        if (workspaceSections.value?.length) {
+          return workspaceSections.value
+        }
+        return buildWorkspaceSections(projectId, name)
+      })(),
     },
     'ai-cap': {
       sections: [
@@ -836,7 +951,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
           title: '工具白名单',
           description:
             isNumericBackendProject(projectId)
-              ? '数据来自 `/api/projects/{id}/tools` 与 `/api/tools`：已为该项目启用的 MCP / Function 工具。'
+              ? '列出已为该项目启用的 MCP / Function 类工具，并与平台工具目录同步。'
               : '管理本项目可调用的工具定义、实现方式与审计级别（演示数据）。',
           actions: [
             { label: '查看全局工具集', variant: 'primary' },
@@ -846,7 +961,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
         {
           type: 'table',
           title: '已启用工具',
-          badge: isNumericBackendProject(projectId) ? '后端数据' : undefined,
+          badge: isNumericBackendProject(projectId) ? '已同步' : undefined,
           table: toolTableForProject(projectId),
         },
       ],
@@ -889,7 +1004,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
           title: '项目知识库',
           description:
             isNumericBackendProject(projectId)
-              ? '数据来自 `/api/knowledge-bases` 与 `/api/projects/{id}/knowledge-configs`：本项目知识库 + 已继承的全局知识库。'
+              ? '包含本项目自有知识库及已在项目侧启用的平台共享知识库，便于统一查看与维护。'
               : '沉淀需求、原型、技术文档和全局规范，供项目成员与 Agent 协同使用。',
           actions: [
             { label: '+ 上传文档', variant: 'primary' },
@@ -899,7 +1014,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
         {
           type: 'table',
           title: isNumericBackendProject(projectId) ? '知识库与继承配置' : '文档清单',
-          badge: isNumericBackendProject(projectId) ? '后端数据' : undefined,
+          badge: isNumericBackendProject(projectId) ? '已同步' : undefined,
           table: knowledgeTableForProject(projectId),
         },
       ],
@@ -983,7 +1098,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
         {
           type: 'table',
           title: '成员列表',
-          badge: isNumericBackendProject(projectId) ? '后端数据' : undefined,
+          badge: isNumericBackendProject(projectId) ? '已同步' : undefined,
           table: membersTableForProject(projectId),
         },
       ],
@@ -996,7 +1111,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
           title: 'Skill 配置',
           description:
             isNumericBackendProject(projectId)
-              ? '数据来自 `/api/projects/{id}/skills` 与 `/api/skills`：展示已为该项目启用的 Skill。'
+              ? '展示已为该项目启用的 Skill，并与平台技能库保持一致。'
               : '按项目启用或禁用 Skill，并配置其适用范围和审批要求。',
           actions: [
             { label: '保存 Skill 配置', variant: 'primary' },
@@ -1006,7 +1121,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
         {
           type: 'table',
           title: 'Skill 开关',
-          badge: isNumericBackendProject(projectId) ? '后端数据' : undefined,
+          badge: isNumericBackendProject(projectId) ? '已同步' : undefined,
           table: skillTableForProject(projectId),
         },
       ],
@@ -1018,7 +1133,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
           eyebrow: `${project.value.name} / Key Management`,
           title: 'Key 管理中心',
           description: isNumericBackendProject(projectId)
-            ? '指标与配额表来自 `GET /api/member-quotas`；用量列表来自 `GET /api/usage-events`；下方「实时使用」仍为本地演示监控。'
+            ? '上方为成员配额与用量列表等实时拉取数据；下方「实时使用」区块为界面演示，不代表生产监控。'
             : '统一管理项目 API Key 分配、配额监控、使用统计和异常告警。',
           actions: [
             { label: '分配新 Key', variant: 'primary' },
@@ -1032,7 +1147,7 @@ const pageConfig = computed<ModulePageConfig>(() => {
         {
           type: 'table',
           title: isNumericBackendProject(projectId) ? '成员 AI 配额' : '成员 Key 分配',
-          badge: isNumericBackendProject(projectId) ? 'member-quotas' : undefined,
+          badge: isNumericBackendProject(projectId) ? '配额' : undefined,
           table: quotaTableForKeyManagement(projectId),
         },
         {
@@ -1054,8 +1169,8 @@ const pageConfig = computed<ModulePageConfig>(() => {
           eyebrow: `${project.value.name} / Settings`,
           title: '项目设置',
           description: isNumericBackendProject(projectId)
-            ? '「基础信息」来自 GET /api/projects/{id}；「研发配置 / 原子能力」等为原型演示。'
-            : '维护项目基础信息、Sprint 周期、Token 配额、模板和原子能力关联。',
+            ? '基础信息与平台项目档案同步；研发配置、原子能力关联等模块仍为界面原型，便于评审布局。'
+            : '维护项目基础信息、Token 配额、模板和原子能力关联。',
           actions: [
             { label: '保存项目设置', variant: 'primary' },
             { label: '查看变更记录' },

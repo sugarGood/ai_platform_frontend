@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAuth } from '../../composables/useAuth'
 import { useOverlay } from '../../composables/useOverlay'
 
 defineProps<{
@@ -7,6 +8,7 @@ defineProps<{
 }>()
 
 const { openNotifications } = useOverlay()
+const { logout } = useAuth()
 </script>
 
 <template>
@@ -26,6 +28,7 @@ const { openNotifications } = useOverlay()
       >
         🪪 我的凭证
       </RouterLink>
+      <button class="btn" data-testid="topbar-logout" type="button" @click="logout">退出</button>
     </div>
   </header>
 </template>

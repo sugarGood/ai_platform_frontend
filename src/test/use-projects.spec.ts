@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { jsonEnvelope } from './mock-api-envelope'
+
 const project101 = {
   id: 101,
   name: '支付网关',
@@ -32,7 +34,7 @@ describe('useProjects', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify(pageFirst), {
+        new Response(jsonEnvelope(pageFirst), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -75,19 +77,19 @@ describe('useProjects', () => {
     const fetchMock = vi.fn()
     fetchMock
       .mockResolvedValueOnce(
-        new Response(JSON.stringify(pageFirst), {
+        new Response(jsonEnvelope(pageFirst), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify(project202), {
+        new Response(jsonEnvelope(project202), {
           status: 201,
           headers: { 'Content-Type': 'application/json' },
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify(pageBoth), {
+        new Response(jsonEnvelope(pageBoth), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),

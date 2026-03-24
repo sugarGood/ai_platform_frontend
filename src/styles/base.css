@@ -152,6 +152,34 @@ a.nav-item {
   font-weight: 600;
 }
 
+/* 乐知助手：与 HTML 原型侧栏条目一致 */
+.nav-item.nav-item--lezhi {
+  background: linear-gradient(90deg, rgba(79, 110, 247, 0.1), transparent);
+  border-left: 2px solid var(--primary);
+  border-radius: 8px;
+}
+
+.nav-item.nav-item--lezhi:hover {
+  background: linear-gradient(90deg, rgba(79, 110, 247, 0.18), var(--sidebar-border));
+}
+
+.nav-item.nav-item--lezhi.active {
+  background: linear-gradient(90deg, rgba(79, 110, 247, 0.22), rgba(79, 110, 247, 0.08));
+  border-left: 2px solid var(--primary);
+  color: #e8ecff;
+}
+
+.nav-item .nav-pill {
+  margin-left: auto;
+  background: var(--primary);
+  color: white;
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: 12px;
@@ -218,7 +246,7 @@ a.sidebar-back {
   font-size: 14px;
 }
 
-.proj-info-sprint {
+.proj-info-meta {
   color: var(--sidebar-text);
   font-size: 11px;
   margin-top: 3px;
@@ -234,6 +262,10 @@ a.sidebar-back {
   background: var(--success);
   display: inline-block;
   flex-shrink: 0;
+}
+
+.proj-status-dot.warning {
+  background: var(--warning);
 }
 
 /* ── 主列 ── */

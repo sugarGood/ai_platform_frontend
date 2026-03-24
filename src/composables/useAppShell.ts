@@ -27,6 +27,9 @@ export function useAppShell() {
         const t = typeof route.meta.title === 'string' ? route.meta.title : '服务详情'
         return `${projectName} · ${t}`
       }
+      if (route.name === 'project-lezhi') {
+        return `${projectName} · 乐知助手`
+      }
       if (route.name === 'project-module' && typeof route.params.section === 'string') {
         const sec = PROJECT_SECTION_TITLES[route.params.section] ?? route.params.section
         return `${projectName} · ${sec}`
@@ -36,6 +39,10 @@ export function useAppShell() {
 
     if (route.name === 'global-module' && typeof route.params.pageKey === 'string') {
       return GLOBAL_PAGE_TITLES[route.params.pageKey] ?? '平台模块'
+    }
+
+    if (route.name === 'global-knowledge-docs') {
+      return '知识库文档'
     }
 
     return typeof route.meta.title === 'string' ? route.meta.title : 'AI 中台'
