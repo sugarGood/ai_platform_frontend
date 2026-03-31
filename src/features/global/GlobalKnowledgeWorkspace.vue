@@ -1104,11 +1104,11 @@ onUnmounted(() => {
 }
 
 .gk-knowledge-search {
-  width: 320px;
-  max-width: 100%;
+  width: 280px;
+  max-width: 280px;
   min-width: 0;
   padding: 8px 12px;
-  flex: 0 1 auto;
+  flex: 0 0 280px;
 }
 
 .gk-knowledge-select {

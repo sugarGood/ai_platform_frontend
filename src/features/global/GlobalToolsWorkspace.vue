@@ -546,15 +546,9 @@ function openToolDetail(row: ToolRow) {
   detailOpen.value = true
 }
 
-function hitlToCode(label: string): HitlLevel {
-  if (label.includes('每次')) return 'always'
-  if (label.includes('首次') || label.includes('加急')) return 'first'
-  return 'none'
-}
-
-function editFromDetail() {
-  const tool = selectedTool.value
-  if (!tool) return
+function openEditModal(row: ToolRow) {
+  detailToolId.value = row.id
+  const tool = tools.value.find((item) => item.id === row.id) ?? row
   resetRegisterForm()
   editingToolId.value = tool.id
   applyCategoryPreset(tool.categoryKey)
@@ -570,6 +564,18 @@ function editFromDetail() {
   registerForm.hitl = hitlToCode(tool.hitl)
   detailOpen.value = false
   registerOpen.value = true
+}
+
+function hitlToCode(label: string): HitlLevel {
+  if (label.includes('每次')) return 'always'
+  if (label.includes('首次') || label.includes('加急')) return 'first'
+  return 'none'
+}
+
+function editFromDetail() {
+  const tool = selectedTool.value
+  if (!tool) return
+  openEditModal(tool)
 }
 
 function toggleKnowledgeSelection(id: string) {
@@ -683,7 +689,12 @@ function toggleBtnClass(tool: ToolRow | null) {
               <td>{{ row.impl }}</td>
               <td><span :class="pillClass(row.auditVariant)">{{ row.auditLabel }}</span></td>
               <td><span :class="pillClass(row.statusVariant)">{{ row.statusLabel }}</span></td>
-              <td><button type="button" class="gtw-mini-btn" @click="openToolDetail(row)">详情</button></td>
+              <td>
+                <div class="gtw-row-actions">
+                  <button type="button" class="gtw-mini-btn" @click="openToolDetail(row)">详情</button>
+                  <button type="button" class="gtw-mini-btn" @click="openEditModal(row)">编辑</button>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1062,6 +1073,11 @@ function toggleBtnClass(tool: ToolRow | null) {
   font-size: 11px;
   background: #fff;
   cursor: pointer;
+}
+
+.gtw-row-actions {
+  display: inline-flex;
+  gap: 6px;
 }
 
 .gtw-mini-btn:disabled {

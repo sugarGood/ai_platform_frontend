@@ -51,6 +51,8 @@ const previewTitle = ref('')
 const previewBody = ref('')
 const previewCopyLabel = ref('复制全文')
 const previewIsMarkdown = ref(true)
+const previewPlatformRow = ref<SkillRow | null>(null)
+const previewAgentRow = ref<AgentPackRow | null>(null)
 
 const agentEditOpen = ref(false)
 const agentEditForm = ref({
@@ -655,6 +657,8 @@ function closeTestRunModal() {
 function closePreviewModal() {
   previewOpen.value = false
   previewBody.value = ''
+  previewPlatformRow.value = null
+  previewAgentRow.value = null
 }
 
 function closeAgentEditModal() {
@@ -888,6 +892,20 @@ function openAgentEditModal(row: AgentPackRow) {
     body: AGENT_SKILL_MD[row.slug] ?? '',
   }
   agentEditOpen.value = true
+}
+
+function editFromPreview() {
+  if (previewPlatformRow.value) {
+    const row = previewPlatformRow.value
+    closePreviewModal()
+    void openPlatformEditModal(row)
+    return
+  }
+  if (previewAgentRow.value) {
+    const row = previewAgentRow.value
+    closePreviewModal()
+    openAgentEditModal(row)
+  }
 }
 
 function saveAgentEditModal() {
@@ -2335,7 +2353,15 @@ onUnmounted(() => {
         <pre class="gsl-preview-body">{{ previewBody }}</pre>
         <div class="gsl-modal-footer">
           <button class="gsl-btn" type="button" @click="copyPreviewBody">{{ previewCopyLabel }}</button>
-          <button class="gsl-btn gsl-btn--primary" type="button" @click="closePreviewModal">关闭</button>
+          <button
+            v-if="previewPlatformRow || previewAgentRow"
+            class="gsl-btn"
+            type="button"
+            @click="editFromPreview"
+          >
+            ??
+          </button>
+          <button class="gsl-btn gsl-btn--primary" type="button" @click="closePreviewModal">??</button>
         </div>
       </div>
     </div>
