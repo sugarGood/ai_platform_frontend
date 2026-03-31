@@ -1,3 +1,4 @@
+import { formatMemberDateDay, memberCredentialStatusCell } from './project-member-display'
 import { buildWorkspaceModuleSections } from './workspace-module-sections'
 import type { PlatformCredentialResponse } from '../types/credentials'
 import type { ModuleSection } from '../types/module-page'
@@ -27,14 +28,8 @@ function pickCredential(creds: PlatformCredentialResponse[]): PlatformCredential
   return active ?? creds[0]
 }
 
-function formatDateHint(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = String(iso)
-  return d.length >= 10 ? d.slice(0, 10) : d
-}
-
 function credentialSubtitle(cred: PlatformCredentialResponse | undefined, roleLabel: string): string {
-  const exp = cred?.expiresAt ? `凭证有效期至 ${formatDateHint(cred.expiresAt)}` : '凭证未设置过期时间'
+  const exp = cred?.expiresAt ? `凭证有效期至 ${formatMemberDateDay(cred.expiresAt)}` : '凭证未设置过期时间'
   return `${exp} · 角色：${roleLabel}`
 }
 
@@ -91,35 +86,18 @@ function memberLabel(u: UserResponse | undefined, userId: number): string {
 
 function rowForMember(
   m: BackendProjectMemberResponse,
-  currentUserId: number,
-  cred: PlatformCredentialResponse | undefined,
   userById: Map<number, UserResponse>,
 ): import('../types/module-page').TableCell[] {
   const u = userById.get(m.userId)
   const name = memberLabel(u, m.userId)
-  const isSelf = m.userId === currentUserId
-
-  let credStatus = '—'
-  let credTone: import('../types/module-page').TableCell['tone'] = 'muted'
-  let accessStatus = '—'
-  let accessTone: import('../types/module-page').TableCell['tone'] = 'muted'
-  let last = formatDateHint(m.joinedAt)
-
-  if (isSelf && cred) {
-    const s = String(cred.status).toUpperCase()
-    credStatus = s === 'ACTIVE' ? '有效' : cred.status
-    credTone = s === 'ACTIVE' ? 'success' : 'warning'
-    accessStatus = cred.lastUsedAt ? '✅ 已接入' : '📦 未接入'
-    accessTone = cred.lastUsedAt ? 'success' : 'muted'
-    last = formatDateHint(cred.lastUsedAt) !== '—' ? formatDateHint(cred.lastUsedAt) : formatDateHint(m.joinedAt)
-  }
+  const cred = memberCredentialStatusCell(m)
 
   return [
     { text: name },
+    { text: String(m.userId), mono: true },
     { text: m.role || '—' },
-    { text: credStatus, tone: credTone },
-    { text: accessStatus, tone: accessTone },
-    { text: last },
+    { text: cred.text, tone: cred.tone, display: cred.display },
+    { text: formatMemberDateDay(m.joinedAt) },
     { text: '详情' },
   ]
 }
@@ -127,8 +105,8 @@ function rowForMember(
 /**
  * 并行请求 OpenAPI 文档中的凭证 / 成员 / MCP 集成 / MCP Server 列表，并组装「接入与凭证」模块段落。
  *
- * 依据：`_api_docs.json` — `GET /api/credentials`、`GET /api/projects/{id}/members`、
- * `GET /api/projects/{id}/mcp-integrations`、`GET /api/mcp-servers`。
+ * 成员表列与 `GET /api/projects/{id}/members` 一致；凭证状态列合并 credentialStatus 与过期/剩余信息，姓名为 `GET /api/users` 解析。
+ * 另并行请求凭证与 MCP：`GET /api/credentials`、`GET /api/projects/{id}/mcp-integrations`、`GET /api/mcp-servers`。
  */
 export async function loadProjectWorkspaceModuleSections(o: LoadProjectWorkspaceOptions): Promise<ModuleSection[]> {
   const [credentials, members, users, integrations, servers] = await Promise.all([
@@ -151,7 +129,7 @@ export async function loadProjectWorkspaceModuleSections(o: LoadProjectWorkspace
 
   const platformKey = `platform-${o.projectName.replace(/"/g, "'")}`
 
-  const memberRows = members.map((m) => rowForMember(m, o.currentUserId, cred, userById))
+  const memberRows = members.map((m) => rowForMember(m, userById))
 
   const intCount = integrations.length
 

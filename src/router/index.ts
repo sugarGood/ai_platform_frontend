@@ -6,6 +6,7 @@ import DashboardPage from '../features/dashboard/DashboardPage.vue'
 import GlobalKnowledgeDocumentsPage from '../features/global/GlobalKnowledgeDocumentsPage.vue'
 import GlobalModulePage from '../features/global/GlobalModulePage.vue'
 import MyCredentialPage from '../features/global/MyCredentialPage.vue'
+import ProjectKnowledgeDocumentsPage from '../features/project/ProjectKnowledgeDocumentsPage.vue'
 import ProjectModulePage from '../features/project/ProjectModulePage.vue'
 import ProjectOverviewPage from '../features/project/ProjectOverviewPage.vue'
 import ProjectLezhiAssistantPage from '../features/project/ProjectLezhiAssistantPage.vue'
@@ -78,6 +79,15 @@ export const routes: RouteRecordRaw[] = [
       scope: 'project',
       title: '乐知助手',
       pageKey: 'lekai',
+    },
+  },
+  {
+    path: '/projects/:projectId/knowledge/:kbId',
+    name: 'project-knowledge-docs',
+    component: ProjectKnowledgeDocumentsPage,
+    meta: {
+      scope: 'project',
+      title: '知识库文档',
     },
   },
   {

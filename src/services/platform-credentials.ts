@@ -40,4 +40,11 @@ export function rotatePlatformCredential(id: number) {
   })
 }
 
+/** PUT `/api/credentials/{id}/bound-project` — body: `{ projectId: number | null }`，null 表示解绑 */
+export function updateCredentialBoundProject(credentialId: number, projectId: number | null) {
+  return requestJson<PlatformCredentialResponse>(`/credentials/${credentialId}/bound-project`, {
+    method: 'PUT',
+    body: JSON.stringify({ projectId }),
+  })
+}
 

@@ -4,9 +4,67 @@
 
 import { fetchWithApiTimeout } from './fetch-with-api-timeout'
 import { buildApiUrl } from './api-url'
-import { getStoredAccessToken } from './auth-storage'
-import { emitAuthSessionUpdated, refreshStoredSession } from './session-refresh'
+import { clearStoredSession, getStoredAccessToken } from './auth-storage'
+import {
+  emitAuthSessionUpdated,
+  refreshStoredSession,
+  stopAutoRefresh,
+} from './session-refresh'
 import { isUnifiedApiEnvelope, unwrapApiJson } from './api-envelope'
+
+let handling401Redirect = false
+
+/** 401 且无法恢复会话时：清本地 session 并跳转登录（避免 api-client 静态依赖 router 造成循环引用） */
+function redirectToLoginDueToUnauthorized() {
+  if (typeof window === 'undefined' || handling401Redirect) return
+  handling401Redirect = true
+  clearStoredSession()
+  stopAutoRefresh()
+  emitAuthSessionUpdated()
+  void import('../router')
+    .then(({ default: router }) => {
+      const full = `${window.location.pathname}${window.location.search}`
+      const onLogin = full === '/login' || full.startsWith('/login?')
+      void router
+        .replace(onLogin ? '/login' : { path: '/login', query: { redirect: full } })
+        .finally(() => {
+          handling401Redirect = false
+        })
+    })
+    .catch(() => {
+      handling401Redirect = false
+    })
+}
+
+async function fetchWithOptionalRefresh(path: string, init: RequestInit): Promise<Response> {
+  async function send(access: string | null) {
+    const body = init.body
+    const jsonBody = Boolean(body) && !(body instanceof FormData)
+    return fetchWithApiTimeout(buildApiUrl(path), {
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        ...(jsonBody ? { 'Content-Type': 'application/json' } : {}),
+        ...(access ? { Authorization: `Bearer ${access}` } : {}),
+        ...init.headers,
+      },
+    })
+  }
+
+  let access = getStoredAccessToken()
+  let response = await send(access)
+
+  if (response.status === 401 && access) {
+    const refreshed = await refreshStoredSession()
+    if (refreshed) {
+      emitAuthSessionUpdated()
+      access = getStoredAccessToken()
+      response = await send(access)
+    }
+  }
+
+  return response
+}
 
 export { buildApiUrl } from './api-url'
 export type { ApiEnvelope } from './api-envelope'
@@ -77,34 +135,14 @@ export async function readFetchErrorMessage(response: Response) {
 }
 
 export async function requestJson<T>(path: string, init: RequestInit = {}) {
-  async function send(access: string | null) {
-    const body = init.body
-    const jsonBody = Boolean(body) && !(body instanceof FormData)
-    return fetchWithApiTimeout(buildApiUrl(path), {
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        ...(jsonBody ? { 'Content-Type': 'application/json' } : {}),
-        ...(access ? { Authorization: `Bearer ${access}` } : {}),
-        ...init.headers,
-      },
-    })
-  }
-
-  let access = getStoredAccessToken()
-  let response = await send(access)
-
-  if (response.status === 401 && access) {
-    const refreshed = await refreshStoredSession()
-    if (refreshed) {
-      emitAuthSessionUpdated()
-      access = getStoredAccessToken()
-      response = await send(access)
-    }
-  }
+  const response = await fetchWithOptionalRefresh(path, init)
 
   if (!response.ok) {
-    throw new Error(await readFetchErrorMessage(response))
+    const msg = await readFetchErrorMessage(response)
+    if (response.status === 401) {
+      redirectToLoginDueToUnauthorized()
+    }
+    throw new Error(msg)
   }
 
   const raw: unknown = await response.json()
@@ -113,34 +151,14 @@ export async function requestJson<T>(path: string, init: RequestInit = {}) {
 
 /** DELETE / 204 等无 JSON 响应体的请求 */
 export async function requestOk(path: string, init: RequestInit = {}): Promise<void> {
-  async function send(access: string | null) {
-    const body = init.body
-    const jsonBody = Boolean(body) && !(body instanceof FormData)
-    return fetchWithApiTimeout(buildApiUrl(path), {
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        ...(jsonBody ? { 'Content-Type': 'application/json' } : {}),
-        ...(access ? { Authorization: `Bearer ${access}` } : {}),
-        ...init.headers,
-      },
-    })
-  }
-
-  let access = getStoredAccessToken()
-  let response = await send(access)
-
-  if (response.status === 401 && access) {
-    const refreshed = await refreshStoredSession()
-    if (refreshed) {
-      emitAuthSessionUpdated()
-      access = getStoredAccessToken()
-      response = await send(access)
-    }
-  }
+  const response = await fetchWithOptionalRefresh(path, init)
 
   if (!response.ok) {
-    throw new Error(await readFetchErrorMessage(response))
+    const msg = await readFetchErrorMessage(response)
+    if (response.status === 401) {
+      redirectToLoginDueToUnauthorized()
+    }
+    throw new Error(msg)
   }
 
   const contentType = response.headers.get('content-type') || ''

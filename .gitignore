@@ -12,6 +12,21 @@ dist
 dist-ssr
 *.local
 
+# Vite / tooling cache
+.vite
+*.tsbuildinfo
+
+# Tests
+coverage
+
+# Env (keep committed templates like .env.example if you add them)
+.env
+.env.*.local
+
+# Windows
+Thumbs.db
+Desktop.ini
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

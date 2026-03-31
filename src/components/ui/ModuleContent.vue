@@ -11,6 +11,11 @@ import type {
   Tone,
 } from '../../types/module-page'
 import CardPanel from './CardPanel.vue'
+import ProjectAiCapacityBlock from './ProjectAiCapacityBlock.vue'
+import ProjectIncidentFocusBlock from './ProjectIncidentFocusBlock.vue'
+import ProjectQuotaManagementBlock from './ProjectQuotaManagementBlock.vue'
+import ProjectServicesPrototypeBlock from './ProjectServicesPrototypeBlock.vue'
+import ProjectSettingsFormsBlock from './ProjectSettingsFormsBlock.vue'
 import StatCard from './StatCard.vue'
 import { useOverlay } from '../../composables/useOverlay'
 
@@ -180,6 +185,45 @@ function handleKnowledgeRagConfig(section: ModuleSection) {
         </p>
       </section>
 
+      <ProjectAiCapacityBlock
+        v-else-if="section.type === 'ai-capacity'"
+        :inherited-global-kbs="section.inheritedGlobalKbs"
+        :knowledge-table="section.knowledgeTable"
+        :project-id="section.projectId"
+        :project-name="section.projectName"
+        :skill-table="section.skillTable"
+        :tool-table="section.toolTable"
+      />
+
+      <ProjectQuotaManagementBlock
+        v-else-if="section.type === 'quota-management'"
+        :member-quota-table="section.memberQuotaTable"
+        :metrics="section.metrics"
+        :project-id="section.projectId"
+        :token-dashboard="section.tokenDashboard"
+      />
+
+      <ProjectServicesPrototypeBlock
+        v-else-if="section.type === 'services-prototype'"
+        :items="section.items"
+        :service-count="section.serviceCount"
+      />
+
+      <ProjectIncidentFocusBlock
+        v-else-if="section.type === 'incident-focus'"
+        :empty-hint="section.emptyHint"
+        :incident="section.incident"
+      />
+
+      <ProjectSettingsFormsBlock
+        v-else-if="section.type === 'project-settings-forms'"
+        :description="section.description"
+        :name="section.name"
+        :project-id="section.projectId"
+        :token-label="section.tokenLabel"
+        :type-label="section.typeLabel"
+      />
+
       <section v-else-if="section.type === 'hero'" class="module-hero">
         <div>
           <div v-if="section.eyebrow" class="module-eyebrow">{{ section.eyebrow }}</div>
@@ -206,6 +250,7 @@ function handleKnowledgeRagConfig(section: ModuleSection) {
           v-for="metric in section.items"
           :key="metric.id"
           :delta="metric.delta"
+          :delta-tone="metric.deltaTone"
           :icon="metric.icon"
           :label="metric.label"
           :tone="metric.tone"
@@ -291,8 +336,26 @@ function handleKnowledgeRagConfig(section: ModuleSection) {
             </thead>
             <tbody>
               <tr v-for="(row, rowIndex) in section.table.rows" :key="`${section.title}-${rowIndex}`">
-                <td v-for="(cell, cellIndex) in row" :key="`${section.title}-${rowIndex}-${cellIndex}`">
-                  <span :class="tableCellClass(cell)">{{ cell.text }}</span>
+                <td
+                  v-for="(cell, cellIndex) in row"
+                  :key="`${section.title}-${rowIndex}-${cellIndex}`"
+                  :class="{ 'module-table-td--tag': cell.display === 'tag' }"
+                >
+                  <span
+                    v-if="cell.display === 'tag'"
+                    class="badge-pill module-table-cell-tag"
+                    :class="toneClass(cell.tone ?? 'default')"
+                  >{{ cell.text }}</span>
+                  <RouterLink
+                    v-else-if="cell.to"
+                    :to="cell.to"
+                    class="module-table-link"
+                    :class="[
+                      tableCellClass(cell),
+                      cell.text === '进入知识库' ? 'module-table-link--enter-kb' : '',
+                    ]"
+                  >{{ cell.text }}</RouterLink>
+                  <span v-else :class="tableCellClass(cell)">{{ cell.text }}</span>
                 </td>
               </tr>
             </tbody>
@@ -1306,6 +1369,32 @@ function handleKnowledgeRagConfig(section: ModuleSection) {
   font-weight: 600;
 }
 
+.module-table-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.module-table-link:hover {
+  text-decoration: underline;
+}
+
+.module-table-link--enter-kb {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(79, 110, 247, 0.45);
+  background: rgba(79, 110, 247, 0.08);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.module-table-link--enter-kb:hover {
+  background: rgba(79, 110, 247, 0.14);
+  text-decoration: none;
+}
+
 .progress-item {
   display: flex;
   flex-direction: column;
@@ -1416,6 +1505,22 @@ function handleKnowledgeRagConfig(section: ModuleSection) {
 
 .badge-pill.tone-danger {
   background: rgba(240, 68, 56, 0.12);
+}
+
+.badge-pill.tone-muted {
+  background: rgba(17, 24, 39, 0.06);
+  color: var(--text-subtle);
+}
+
+.module-table-td--tag {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.module-table-cell-tag {
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .note-bubble.tone-success {

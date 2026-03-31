@@ -1,8 +1,4 @@
-import type { ModulePageConfig, TableCell } from '../types/module-page'
-
-function cell(text: string, tone?: TableCell['tone'], mono = false): TableCell {
-  return { text, tone, mono }
-}
+import type { ModulePageConfig } from '../types/module-page'
 
 /**
  * Global pages that exist in HTML prototype sidebar but were not in GlobalModulePage yet.
@@ -75,49 +71,6 @@ export const prototypeGlobalPagesExtra: Record<string, ModulePageConfig> = {
         items: [
           { label: '个人配额使用', value: '37%', progress: 37, tone: 'success', hint: '低于 80% 预警线' },
           { label: '项目池使用', value: '68%', progress: 68, tone: 'warning', hint: '接近部门默认阈值' },
-        ],
-      },
-    ],
-  },
-  'global-tools': {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Tools',
-        title: '全局工具集',
-        description: '企业级工具目录：统一注册、权限、观测与版本治理，供 Agent 与工作流复用。',
-        actions: [{ label: '注册工具', variant: 'primary' }],
-      },
-      {
-        type: 'table',
-        title: '工具清单（示例）',
-        table: {
-          columns: ['工具', '类型', '风险', '状态', '最近调用'],
-          rows: [
-            [cell('search_codebase', 'default', true), cell('检索'), cell('低', 'success'), cell('已发布', 'success'), cell('2 分钟前')],
-            [cell('trigger_deploy', 'default', true), cell('交付'), cell('高', 'danger'), cell('需审批', 'warning'), cell('15 分钟前')],
-            [cell('create_incident', 'default', true), cell('运维'), cell('中', 'warning'), cell('已发布', 'success'), cell('1 小时前')],
-          ],
-        },
-      },
-    ],
-  },
-  integrations: {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Marketplace',
-        title: '集成市场',
-        description: '浏览第三方集成与官方连接器，一键启用到项目或全局范围。',
-        actions: [{ label: '提交集成', variant: 'primary' }],
-      },
-      {
-        type: 'catalog-grid',
-        columns: 3,
-        items: [
-          { icon: '🦊', title: 'GitLab', subtitle: 'CI 事件 → Agent', badge: '官方', tone: 'success', description: '流水线状态回传中台，触发审查与发布助手。' },
-          { icon: '💬', title: '飞书', subtitle: '通知与审批', badge: '官方', tone: 'primary', description: '告警、配额、审批卡片直达群聊。' },
-          { icon: '☁️', title: '云厂商 KMS', subtitle: '密钥托管', badge: '企业', tone: 'warning', description: '上游 Key 不落盘，按项目绑定解密策略。' },
         ],
       },
     ],

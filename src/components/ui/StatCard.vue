@@ -5,8 +5,8 @@ defineProps<{
   value: string
   delta: string
   tone?: 'primary' | 'danger' | 'success' | 'warning' | 'default'
-  /** 副标题用成功色（如 ↑ 环比、目标达成） */
-  deltaTone?: 'default' | 'success'
+  /** 副标题：成功（↑ 环比）或危险（需审批等） */
+  deltaTone?: 'default' | 'success' | 'danger'
 }>()
 </script>
 
@@ -17,7 +17,15 @@ defineProps<{
       <div class="stat-icon">{{ icon }}</div>
     </div>
     <div class="stat-value" :class="tone ?? 'default'">{{ value }}</div>
-    <div class="stat-delta" :class="{ 'stat-delta--success': deltaTone === 'success' }">{{ delta }}</div>
+    <div
+      class="stat-delta"
+      :class="{
+        'stat-delta--success': deltaTone === 'success',
+        'stat-delta--danger': deltaTone === 'danger',
+      }"
+    >
+      {{ delta }}
+    </div>
   </article>
 </template>
 
@@ -27,6 +35,7 @@ defineProps<{
   background: #fff;
   border: 1px solid var(--card-border);
   border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .stat-head {
@@ -53,6 +62,7 @@ defineProps<{
   font-size: 36px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: #111827;
 }
 
 .stat-value.primary {
@@ -80,6 +90,10 @@ defineProps<{
 
 .stat-delta--success {
   color: var(--success);
+}
+
+.stat-delta--danger {
+  color: var(--danger);
 }
 </style>
 

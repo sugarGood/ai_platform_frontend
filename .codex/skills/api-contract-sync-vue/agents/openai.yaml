@@ -1,0 +1,4 @@
+interface:
+  display_name: "API Contract Sync Vue"
+  short_description: "Sync Vue frontend code to API contracts safely."
+  default_prompt: "Use $api-contract-sync-vue to analyze or implement an API contract change in this Vue project."

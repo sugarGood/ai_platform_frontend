@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vue Admin Feature Builder"
+  short_description: "Build Vue admin features using repo patterns."
+  default_prompt: "Use $vue-admin-feature-builder to add or refactor a feature in this Vue admin project."

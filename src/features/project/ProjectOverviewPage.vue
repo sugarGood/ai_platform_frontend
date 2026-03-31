@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { getProjectById } from '../../composables/useProjects'
+import { getProjectById, refreshProjectCoreFromApi } from '../../composables/useProjects'
 import ActivityTimeline from '../../components/ui/ActivityTimeline.vue'
 import CardPanel from '../../components/ui/CardPanel.vue'
 import StatCard from '../../components/ui/StatCard.vue'
@@ -17,6 +17,14 @@ const project = computed(() => {
 
   return getProjectById(route.params.projectId)
 })
+
+watch(
+  () => (typeof route.params.projectId === 'string' ? route.params.projectId : ''),
+  (pid) => {
+    if (pid) void refreshProjectCoreFromApi(pid)
+  },
+  { immediate: true },
+)
 
 const stats = computed(() => {
   if (!project.value) {

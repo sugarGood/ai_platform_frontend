@@ -41,6 +41,7 @@ export function buildWorkspaceModuleSections(a: WorkspaceModuleSectionsArgs): Mo
             cell('—'),
             cell('—'),
             cell('—'),
+            cell('—'),
           ],
         ]
 
@@ -101,7 +102,7 @@ export function buildWorkspaceModuleSections(a: WorkspaceModuleSectionsArgs): Mo
       title: '👥 项目成员接入状态',
       actions: [{ label: '📧 批量发送接入指南' }, { label: '🔍 批量检测' }],
       table: {
-        columns: ['成员', '角色', '凭证状态', '接入状态', '最后活跃', '操作'],
+        columns: ['成员', '用户 ID', '角色', '凭证状态', '加入时间', '操作'],
         rows: memberRows,
       },
     },

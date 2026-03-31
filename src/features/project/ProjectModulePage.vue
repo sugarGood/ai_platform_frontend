@@ -1,28 +1,29 @@
 <script setup lang="ts">
-import { computed, watch, onMounted, onUnmounted } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ModuleContent from '../../components/ui/ModuleContent.vue'
-import KeyManagementMonitor from '../../components/ui/KeyManagementMonitor.vue'
 import {
   getProjectApiSnapshot,
   getProjectById,
-  getProjectKeyMetrics,
+  getProjectInheritedGlobalKbs,
+  getProjectIncidentsList,
   getProjectKnowledgeTableRows,
   getProjectMemberTableRows,
   getProjectQuotaTableRows,
   getProjectSkillTableRows,
+  getProjectTokenDashboardBundle,
   getProjectToolTableRows,
-  getProjectUsageActivity,
-  getProjectUsageTop,
+  getProjectUsageSummaryRaw,
+  loadProjectSpaceSectionFromApi,
   projectSpaceState,
-  projectTypeLabelMap,
-  refreshProjectSpaceFromApi,
+  refreshProjectCoreFromApi,
+  tokenDashboardRevision,
 } from '../../composables/useProjects'
-import type { BackendProjectType } from '../../types/project'
+import { incidentToCardModel, pickPrimaryIncident } from '../../lib/project-incident-display'
+import { normalizeProjectUsageSummary } from '../../lib/project-usage-summary'
 import type {
   CatalogItem,
-  ListItem,
   ModulePageConfig,
   ModuleSection,
   PageMetric,
@@ -31,73 +32,134 @@ import type {
 } from '../../types/module-page'
 import NotFoundProjectState from './NotFoundProjectState.vue'
 import { useAuth } from '../../composables/useAuth'
-import { useKeyMonitoring } from '../../composables/useKeyMonitoring'
 import { useProjectWorkspaceApi } from '../../composables/useProjectWorkspace'
 import { buildWorkspaceModuleSections } from '../../lib/workspace-module-sections'
 
 const route = useRoute()
 
-// Initialize key monitoring
-const { startMonitoring, stopMonitoring, isMonitoring } = useKeyMonitoring()
-
 function isNumericBackendProject(projectId: string) {
   return /^\d+$/.test(projectId)
 }
 
-function cell(text: string, tone?: TableCell['tone'], mono = false): TableCell {
-  return { text, tone, mono }
+function cell(
+  text: string,
+  tone?: TableCell['tone'],
+  mono = false,
+  display?: TableCell['display'],
+): TableCell {
+  return { text, tone, mono, display }
 }
+
+const memberColsPrototype = ['成员', '角色', '凭证状态', '知识库权限', '可用技能', '配额（月）', '操作']
 
 function membersTableForProject(projectId: string): TableData {
   const apiRows = getProjectMemberTableRows(projectId)
   if (apiRows !== undefined) {
+    const empty = [cell('—'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')]
+    if (apiRows.length === 0) {
+      return {
+        columns: memberColsPrototype,
+        rows: [[cell('暂无成员', 'muted'), ...empty.slice(1)]],
+      }
+    }
     return {
-      columns: ['成员', '用户 ID', '角色', '加入时间'],
-      rows: apiRows.length > 0 ? apiRows : [[cell('暂无成员', 'muted'), cell('—'), cell('—'), cell('—')]],
+      columns: memberColsPrototype,
+      rows: apiRows.map((r) => {
+        const name = r[0] ?? cell('—')
+        const role = r[2] ?? cell('—')
+        const cred = r[3] ?? cell('—')
+        return [
+          name,
+          { ...role, display: 'tag' },
+          { ...cred, display: cred.display ?? 'tag' },
+          cell('与角色同步', 'muted'),
+          cell('与项目同步', 'muted'),
+          cell('—', 'muted'),
+          cell('权限设置'),
+        ]
+      }),
     }
   }
   if (isNumericBackendProject(projectId)) {
     if (projectSpaceState.error) {
       return {
-        columns: ['成员', '用户 ID', '角色', '加入时间'],
-        rows: [[cell(`加载失败：${projectSpaceState.error}`, 'danger'), cell('—'), cell('—'), cell('—')]],
+        columns: memberColsPrototype,
+        rows: [
+          [cell(`加载失败：${projectSpaceState.error}`, 'danger'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')],
+        ],
       }
     }
     return {
-      columns: ['成员', '用户 ID', '角色', '加入时间'],
-      rows: [[cell('正在从后端加载成员…', 'primary'), cell('—'), cell('—'), cell('—')]],
+      columns: memberColsPrototype,
+      rows: [[cell('正在从后端加载成员…', 'primary'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')]],
     }
   }
   return {
-    columns: ['成员', '角色', 'Token 配额', '知识库权限', 'Skill 权限', '状态'],
+    columns: memberColsPrototype,
     rows: [
-      [cell('张三'), cell('项目负责人'), cell('120K / 月'), cell('读写'), cell('全部'), cell('在线', 'success')],
-      [cell('李四'), cell('后端开发'), cell('80K / 月'), cell('读写'), cell('研发类'), cell('在线', 'success')],
-      [cell('王五'), cell('前端开发'), cell('60K / 月'), cell('读取'), cell('研发类'), cell('在线', 'success')],
-      [cell('赵六'), cell('测试'), cell('40K / 月'), cell('读取'), cell('测试类'), cell('离线', 'muted')],
+      [
+        cell('张三'),
+        { text: '项目负责人', tone: 'primary', display: 'tag' },
+        { text: '● 正常', tone: 'success', display: 'tag' },
+        cell('读写'),
+        cell('全部'),
+        cell('无限制'),
+        cell('权限设置'),
+      ],
+      [
+        cell('李四'),
+        { text: '开发', tone: 'muted', display: 'tag' },
+        { text: '● 接近上限', tone: 'warning', display: 'tag' },
+        cell('只读'),
+        cell('代码相关'),
+        { text: '180K / 100K', tone: 'warning' },
+        cell('扩容 · 权限设置'),
+      ],
+      [
+        cell('王五'),
+        { text: '开发', tone: 'muted', display: 'tag' },
+        { text: '● 正常', tone: 'success', display: 'tag' },
+        cell('只读'),
+        cell('代码相关'),
+        cell('68K / 100K'),
+        cell('权限设置'),
+      ],
+      [
+        cell('陈六'),
+        { text: '测试', tone: 'muted', display: 'tag' },
+        { text: '● 正常', tone: 'success', display: 'tag' },
+        cell('只读'),
+        cell('测试相关'),
+        cell('42K / 100K'),
+        cell('权限设置'),
+      ],
     ],
   }
 }
+
+const knowledgeTableCols = ['知识库名称', '来源', '文档数', '状态', '备注', '操作'] as const
 
 function knowledgeTableForProject(projectId: string): TableData {
   const apiRows = getProjectKnowledgeTableRows(projectId)
   if (apiRows !== undefined) {
     return {
-      columns: ['知识库名称', '来源', '文档数', '状态', '备注'],
+      columns: [...knowledgeTableCols],
       rows:
-        apiRows.length > 0 ? apiRows : [[cell('暂无知识库或继承配置', 'muted'), cell('—'), cell('—'), cell('—'), cell('—')]],
+        apiRows.length > 0
+          ? apiRows
+          : [[cell('暂无知识库或继承配置', 'muted'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')]],
     }
   }
   if (isNumericBackendProject(projectId)) {
     if (projectSpaceState.error) {
       return {
-        columns: ['知识库名称', '来源', '文档数', '状态', '备注'],
-        rows: [[cell(`加载失败：${projectSpaceState.error}`, 'danger'), cell('—'), cell('—'), cell('—'), cell('—')]],
+        columns: [...knowledgeTableCols],
+        rows: [[cell(`加载失败：${projectSpaceState.error}`, 'danger'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')]],
       }
     }
     return {
-      columns: ['知识库名称', '来源', '文档数', '状态', '备注'],
-      rows: [[cell('正在从后端加载知识库…', 'primary'), cell('—'), cell('—'), cell('—'), cell('—')]],
+      columns: [...knowledgeTableCols],
+      rows: [[cell('正在从后端加载知识库…', 'primary'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')]],
     }
   }
   return {
@@ -219,11 +281,22 @@ const { workspaceSections, workspaceLoading, workspaceError } = useProjectWorksp
 })
 
 watch(
-  () => route.params.projectId,
+  () => (typeof route.params.projectId === 'string' ? route.params.projectId : ''),
   (pid) => {
-    if (typeof pid === 'string') {
-      void refreshProjectSpaceFromApi(pid)
-    }
+    if (pid) void refreshProjectCoreFromApi(pid)
+  },
+  { immediate: true },
+)
+
+watch(
+  () =>
+    [
+      typeof route.params.projectId === 'string' ? route.params.projectId : '',
+      typeof route.params.section === 'string' ? route.params.section : '',
+    ] as const,
+  ([pid, sec]) => {
+    if (!pid || !sec) return
+    void loadProjectSpaceSectionFromApi(pid, sec)
   },
   { immediate: true },
 )
@@ -263,336 +336,481 @@ function buildServiceCards(projectId: string) {
   })
 }
 
-const mockKeyMetrics: PageMetric[] = [
-  { id: 'keys', icon: '🔑', label: '启用 Key', value: '6', delta: 'Claude / GPT / 文心 多模型', tone: 'primary' },
-  { id: 'members', icon: '👥', label: '已分配成员', value: '12', delta: '4 个高级权限', tone: 'success' },
-  { id: 'usage', icon: '📊', label: '本月使用', value: '68%', delta: '较上月 +12%', tone: 'warning' },
-  { id: 'alerts', icon: '⚠️', label: '异常告警', value: '1', delta: '王五配额超限', tone: 'danger' },
-]
+const quotaMemberCols = ['成员', '角色', '本月已用', '个人限额', '状态', '操作']
 
-const mockKeyQuotaTable: TableData = {
-  columns: ['成员', '角色', '状态', '配额', '使用量', '操作'],
-  rows: [
-    [cell('张三'), cell('Owner'), cell('已分配', 'success'), cell('120K'), cell('87K (73%)', 'warning'), cell('调整配额')],
-    [cell('李四'), cell('Member'), cell('已分配', 'success'), cell('80K'), cell('52K (65%)', 'primary'), cell('查看详情')],
-    [cell('王五'), cell('Member'), cell('已分配', 'success'), cell('60K'), cell('64K (107%)', 'danger'), cell('紧急调整')],
-    [cell('赵六'), cell('Viewer'), cell('未分配', 'muted'), cell('--'), cell('--'), cell('分配 Key')],
-  ],
+function formatTokensShortLocal(n: number): string {
+  if (!Number.isFinite(n)) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return String(Math.round(n))
 }
 
-const mockKeySplitLists: [ListItem[], ListItem[]] = [
-  [
-    { title: '14:23 李四使用 GPT-4', meta: '消耗 2.3K tokens', badge: '刚刚', tone: 'primary' },
-    { title: '14:18 张三使用 Claude-3', meta: '消耗 1.8K tokens', badge: '5分钟前', tone: 'success' },
-    { title: '14:15 王五使用 GPT-4', meta: '消耗 4.2K tokens', badge: '8分钟前', tone: 'primary' },
-  ],
-  [
-    { title: '1. 张三', meta: '892K tokens', badge: '第1名', tone: 'success' },
-    { title: '2. 王五', meta: '856K tokens', badge: '第2名', tone: 'primary' },
-    { title: '3. 李四', meta: '654K tokens', badge: '第3名', tone: 'primary' },
-  ],
-]
+function memberQuotaTableForProject(projectId: string): TableData {
+  void tokenDashboardRevision.value
+  const tdBundle = getProjectTokenDashboardBundle(projectId)
+  if (tdBundle?.quotaTable && tdBundle.quotaTable.rows.length > 0) {
+    return {
+      columns: tdBundle.quotaTable.columns,
+      rows: tdBundle.quotaTable.rows,
+    }
+  }
 
-function keyMetricsForProject(projectId: string): PageMetric[] {
-  if (!isNumericBackendProject(projectId)) return mockKeyMetrics
+  const emptyRow = [cell('—'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')] as TableCell[]
+  const mock: TableData = {
+    columns: quotaMemberCols,
+    rows: [
+      [
+        cell('张三'),
+        { text: '负责人', tone: 'primary', display: 'tag' },
+        cell('186K'),
+        cell('无限制'),
+        { text: '● 正常', tone: 'success', display: 'tag' },
+        cell('调整'),
+      ],
+      [
+        cell('李四'),
+        { text: '开发', tone: 'muted', display: 'tag' },
+        { text: '180K', tone: 'danger' },
+        cell('100K'),
+        { text: '● 已超额', tone: 'danger', display: 'tag' },
+        cell('扩容 · 暂停'),
+      ],
+      [
+        cell('王五'),
+        { text: '开发', tone: 'muted', display: 'tag' },
+        cell('68K'),
+        cell('100K'),
+        { text: '● 正常', tone: 'success', display: 'tag' },
+        cell('调整'),
+      ],
+      [
+        cell('陈六'),
+        { text: '测试', tone: 'muted', display: 'tag' },
+        cell('42K'),
+        cell('100K'),
+        { text: '● 正常', tone: 'success', display: 'tag' },
+        cell('调整'),
+      ],
+    ],
+  }
+
+  if (!isNumericBackendProject(projectId)) return mock
+  if (projectSpaceState.error) {
+    return {
+      columns: quotaMemberCols,
+      rows: [[cell(`加载失败：${projectSpaceState.error}`, 'danger'), ...emptyRow.slice(1)]],
+    }
+  }
+  const apiRows = getProjectQuotaTableRows(projectId)
+  if (apiRows !== undefined) {
+    if (apiRows.length === 0) {
+      return {
+        columns: quotaMemberCols,
+        rows: [[cell('暂无配额记录', 'muted'), ...emptyRow.slice(1)]],
+      }
+    }
+    return {
+      columns: quotaMemberCols,
+      rows: apiRows.map((r) => {
+        const usedLimit = r[2]?.text ?? '—'
+        const parts = usedLimit.split(/\s*\/\s*/)
+        const used = parts[0]?.trim() ?? '—'
+        const lim = parts[1]?.trim() ?? '—'
+        const statusCell = r[4] ?? cell('—')
+        return [
+          r[0] ?? cell('—'),
+          { text: r[1]?.text ?? '—', display: 'tag', tone: r[1]?.tone },
+          { text: used },
+          { text: lim },
+          { ...statusCell, display: 'tag' },
+          cell('调整'),
+        ]
+      }),
+    }
+  }
+  if (projectSpaceState.loadingProjectId === projectId) {
+    return {
+      columns: quotaMemberCols,
+      rows: [[cell('正在加载成员配额…', 'primary'), ...emptyRow.slice(1)]],
+    }
+  }
+  return {
+    columns: quotaMemberCols,
+    rows: [[cell('等待项目空间同步…', 'muted'), ...emptyRow.slice(1)]],
+  }
+}
+
+function parseQuotaCellAmount(text: string): number {
+  const s = String(text).replace(/,/g, '').trim().toUpperCase()
+  if (!s || s === '—') return NaN
+  const m = s.match(/^([\d.]+)\s*([KM])?/)
+  if (!m) {
+    const n = Number(s)
+    return Number.isFinite(n) ? n : NaN
+  }
+  let n = parseFloat(m[1]!)
+  const u = m[2]
+  if (u === 'K') n *= 1000
+  if (u === 'M') n *= 1_000_000
+  return n
+}
+
+function countActiveConsumersFromQuotaRows(rows: TableCell[][]): number {
+  let n = 0
+  for (const r of rows) {
+    const v = parseQuotaCellAmount(r[2]?.text ?? '')
+    if (Number.isFinite(v) && v > 0) n++
+  }
+  return n
+}
+
+function countPersonalCapWarnings(rows: TableCell[][]): number {
+  let n = 0
+  for (const r of rows) {
+    const limText = (r[3]?.text ?? '').trim()
+    if (!limText || limText.includes('无限制')) continue
+    const used = parseQuotaCellAmount(r[2]?.text ?? '')
+    const cap = parseQuotaCellAmount(limText)
+    if (Number.isFinite(cap) && cap > 0 && Number.isFinite(used) && used >= cap) n++
+  }
+  return n
+}
+
+function isQuotaTableLoading(rows: TableCell[][]): boolean {
+  if (rows.length !== 1) return false
+  return /加载|同步|等待/.test(rows[0]?.[0]?.text ?? '')
+}
+
+function quotaPageMetrics(projectId: string, memberCount: number, quotaTableRows: TableCell[][]): PageMetric[] {
+  void tokenDashboardRevision.value
+  const mock: PageMetric[] = [
+    {
+      id: 'pool',
+      icon: '🪙',
+      label: '项目 Token 池',
+      value: '500K',
+      delta: '本月已用 320K · 64%',
+      tone: 'primary',
+      deltaTone: 'success',
+    },
+    {
+      id: 'active',
+      icon: '👥',
+      label: '活跃消耗成员',
+      value: '5 / 6',
+      delta: '1 人本月无消耗',
+      tone: 'default',
+      deltaTone: 'success',
+    },
+    {
+      id: 'daily',
+      icon: '📈',
+      label: '日均消耗',
+      value: '16K',
+      delta: '预计月能用 496K（安全）',
+      tone: 'default',
+      deltaTone: 'success',
+    },
+    {
+      id: 'warn',
+      icon: '⚠️',
+      label: '超限预警',
+      value: '0',
+      delta: '无成员触及个人上限',
+      tone: 'success',
+      deltaTone: 'success',
+    },
+  ]
+
+  if (!isNumericBackendProject(projectId)) return mock
   if (projectSpaceState.error) {
     return [
       {
         id: 'err',
         icon: '⚠️',
-        label: '项目空间',
+        label: '配额数据',
         value: '加载失败',
         delta: projectSpaceState.error,
         tone: 'danger',
+        deltaTone: 'default',
       },
-      ...mockKeyMetrics.slice(1),
+      ...mock.slice(1),
     ]
   }
-  const api = getProjectKeyMetrics(projectId)
-  if (api) return api
-  if (projectSpaceState.loadingProjectId === projectId) {
-    return [
-      { id: 'load', icon: '⏳', label: '同步中', value: '…', delta: '正在拉取项目、配额与用量', tone: 'primary' },
-      { id: 'load2', icon: '⏳', label: '请稍候', value: '…', delta: '与项目详情一并刷新', tone: 'default' },
-      { id: 'load3', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default' },
-      { id: 'load4', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default' },
-    ]
-  }
-  return mockKeyMetrics
-}
 
-function quotaTableForKeyManagement(projectId: string): TableData {
-  const apiCols = ['成员', '配额类型', '已用 / 上限', '重置周期', '状态']
-  const emptyApiRow = [cell('—'), cell('—'), cell('—'), cell('—'), cell('—')] as TableCell[]
-
-  if (!isNumericBackendProject(projectId)) return mockKeyQuotaTable
-  if (projectSpaceState.error) {
-    return {
-      columns: apiCols,
-      rows: [[cell(`加载失败：${projectSpaceState.error}`, 'danger'), ...emptyApiRow.slice(1)]],
-    }
-  }
-  const rows = getProjectQuotaTableRows(projectId)
-  if (rows !== undefined) {
-    return {
-      columns: apiCols,
-      rows:
-        rows.length > 0
-          ? rows
-          : [[cell('暂无配额记录', 'muted'), cell('—'), cell('—'), cell('—'), cell('—')]],
-    }
-  }
-  if (projectSpaceState.loadingProjectId === projectId) {
-    return {
-      columns: apiCols,
-      rows: [[cell('正在加载成员配额…', 'primary'), ...emptyApiRow.slice(1)]],
-    }
-  }
-  return {
-    columns: apiCols,
-    rows: [[cell('等待项目空间同步…', 'muted'), ...emptyApiRow.slice(1)]],
-  }
-}
-
-function keyManagementSplitItems(projectId: string) {
-  const [mockLeft, mockRight] = mockKeySplitLists
-  const emptyMuted = (title: string, meta: string): ListItem => ({ title, meta, tone: 'muted' })
-
-  if (!isNumericBackendProject(projectId)) {
-    return [
-      { title: '实时使用监控', list: mockLeft },
-      { title: 'Top 活跃成员', list: mockRight },
-    ]
-  }
-  if (projectSpaceState.error) {
-    const err: ListItem = { title: '加载失败', meta: projectSpaceState.error, tone: 'danger' }
-    return [
-      { title: '最近用量事件', list: [err] },
-      { title: 'Top 成员', list: [emptyMuted('—', '—')] },
-    ]
-  }
-  const left = getProjectUsageActivity(projectId)
-  const right = getProjectUsageTop(projectId)
-  if (left !== undefined && right !== undefined) {
-    return [
-      {
-        title: '最近用量事件（分页样本）',
-        list: left.length > 0 ? left : [emptyMuted('暂无事件', '当前分页内没有用量记录')],
-      },
-      {
-        title: '本页 Top 成员（按 tokens）',
-        list: right.length > 0 ? right : [emptyMuted('暂无汇总', '本页事件中无 userId')],
-      },
-    ]
-  }
-  if (projectSpaceState.loadingProjectId === projectId) {
-    const loading: ListItem = { title: '正在加载用量数据…', meta: '请稍候', tone: 'primary' }
-    return [
-      { title: '最近用量事件', list: [loading] },
-      { title: 'Top 成员', list: [loading] },
-    ]
-  }
-  return [
-    { title: '实时使用监控', list: mockLeft },
-    { title: 'Top 活跃成员', list: mockRight },
-  ]
-}
-
-function keyManagementListGridCards(projectId: string) {
-  const mockCards = [
-    {
-      title: '异常告警',
-      items: [
-        {
-          title: '配额预警',
-          meta: '王五本月使用量已超额7%',
-          description: '建议调整配额或优化使用模式',
-          badge: '需处理',
-          tone: 'danger' as const,
-        },
-      ],
-    },
-    {
-      title: '优化建议',
-      items: [
-        {
-          title: '配额建议',
-          meta: '项目整体使用率68%',
-          description: '可考虑为新成员分配剩余配额',
-          badge: '建议',
-          tone: 'primary' as const,
-        },
-      ],
-    },
-  ]
-
-  if (!isNumericBackendProject(projectId)) return mockCards
-
-  const metrics = getProjectKeyMetrics(projectId)
-  const failN = Number(metrics?.find((m) => m.id === 'fail')?.value ?? 0)
-  const quotaN = Number(metrics?.find((m) => m.id === 'quotas')?.value ?? 0)
-  const tokMetric = metrics?.find((m) => m.id === 'tokens')
-
-  const alertItems: ListItem[] =
-    failN > 0
-      ? [
-          {
-            title: '存在非成功调用',
-            meta: `本页用量样本中约 ${failN} 条未成功`,
-            description: '请结合下方「最近用量事件」查看失败原因说明。',
-            badge: '需关注',
-            tone: 'danger' as const,
-          },
-        ]
-      : [
-          {
-            title: '调用状态正常',
-            meta: '本页用量样本中未发现失败记录',
-            badge: 'OK',
-            tone: 'success' as const,
-          },
-        ]
-
-  const suggestItems: ListItem[] = [
-    {
-      title: '成员配额',
-      meta: `成员配额共 ${Number.isFinite(quotaN) ? quotaN : 0} 条`,
-      description: '与上方「成员 AI 配额」表一致，只读展示。',
-      badge: '只读',
-      tone: 'primary' as const,
-    },
-    {
-      title: '用量样本',
-      meta: tokMetric ? `近页合计约 ${tokMetric.value} tokens` : '—',
-      description: tokMetric?.delta ?? '按时间分页汇总的用量样本。',
-      badge: '样本',
-      tone: 'warning' as const,
-    },
-  ]
-
-  return [
-    { title: '告警与状态（后端样本）', items: alertItems },
-    { title: '说明', items: suggestItems },
-  ]
-}
-
-function psettingsSplitItems(projectId: string, detailName: string, typeLabel: string, description: string) {
   const snap = getProjectApiSnapshot(projectId)
-  if (!snap) {
+  const tdBundle = getProjectTokenDashboardBundle(projectId)
+  const td = tdBundle?.summary
+  const tdUsable =
+    td &&
+    (td.projectUsedTokensThisMonth != null ||
+      td.projectQuotaTokens != null ||
+      td.memberTotalCount != null ||
+      td.membersAiEnabledCount != null ||
+      td.personalPoolAtThresholdCount != null)
+
+  if (tdUsable) {
+    const sumLegacy = normalizeProjectUsageSummary(getProjectUsageSummaryRaw(projectId))
+    const usedNum =
+      td.projectUsedTokensThisMonth ??
+      sumLegacy.usedTokens ??
+      (snap?.usedTokensThisMonth != null && snap.usedTokensThisMonth >= 0 ? snap.usedTokensThisMonth : undefined)
+    const quotaNum =
+      td.projectQuotaTokens ??
+      sumLegacy.quotaTokens ??
+      (snap?.monthlyTokenQuota != null && snap.monthlyTokenQuota > 0 ? snap.monthlyTokenQuota : undefined)
+    const poolValue =
+      quotaNum !== undefined && Number.isFinite(quotaNum) && quotaNum > 0
+        ? formatTokensShortLocal(quotaNum)
+        : '—'
+    let poolDelta = '配额未配置'
+    if (quotaNum != null && quotaNum > 0 && usedNum != null && Number.isFinite(usedNum)) {
+      const pct = Math.min(100, Math.round((usedNum / quotaNum) * 100))
+      const rem =
+        td.projectRemainingTokens != null && Number.isFinite(td.projectRemainingTokens)
+          ? ` · 剩余 ${formatTokensShortLocal(td.projectRemainingTokens)}`
+          : ''
+      poolDelta = `本月已用 ${formatTokensShortLocal(usedNum)} · ${pct}%${rem}`
+    } else if (usedNum != null && Number.isFinite(usedNum)) {
+      poolDelta = `本月已用 ${formatTokensShortLocal(usedNum)}`
+    }
+
+    const totalM = td.memberTotalCount ?? memberCount
+    const enabled = td.membersAiEnabledCount
+    const disabled = td.membersAiDisabledCount
+    const aiValue =
+      enabled != null && totalM > 0
+        ? `${enabled} / ${totalM}`
+        : enabled != null
+          ? `${enabled} / —`
+          : '— / —'
+    let aiDelta = '—'
+    if (disabled != null && disabled > 0) {
+      aiDelta = `未开 AI ${disabled} 人`
+    } else if (totalM > 0 && enabled != null && enabled >= totalM) {
+      aiDelta = '成员均已开通 AI'
+    } else {
+      aiDelta = '以 token-dashboard 为准'
+    }
+
+    const dayInMonth = new Date().getDate()
+    let dailyStr = '—'
+    let dailyDelta = '数据不足'
+    if (td.dailyDigestModuleAvailable === true && (td.dailyDigestCount ?? 0) > 0) {
+      dailyStr = String(td.dailyDigestCount)
+      dailyDelta = '日报模块（占位已开启）'
+    } else if (usedNum != null && Number.isFinite(usedNum) && usedNum >= 0) {
+      const daily = usedNum / Math.max(1, dayInMonth)
+      dailyStr = formatTokensShortLocal(daily)
+      if (quotaNum != null && quotaNum > 0) {
+        const projected = daily * 30
+        const ratio = projected / quotaNum
+        const tag = ratio <= 0.92 ? '（安全）' : ratio <= 1 ? '（关注）' : '（预警）'
+        dailyDelta = `预计月能用 ${formatTokensShortLocal(projected)}${tag}`
+      } else {
+        dailyDelta = `按当前节奏折算约 ${formatTokensShortLocal(daily * 30)} / 月`
+      }
+    }
+    const w = td.monthWarningAlertsCount
+    const c = td.monthCriticalAlertsCount
+    if (w != null || c != null) {
+      dailyDelta += ` · 告警 W:${w ?? 0} / C:${c ?? 0}`
+    }
+
+    const capN = td.personalPoolAtThresholdCount ?? 0
+    const firing = td.firingAlertsCount ?? 0
+    const warnDelta =
+      capN > 0
+        ? `${capN} 人个人池触达告警阈值`
+        : '无个人池触达告警阈值'
+    const warnDelta2 =
+      firing > 0 ? `${warnDelta} · FIRING ${firing}` : warnDelta
+
     return [
       {
-        title: '基础信息',
-        lines: [
-          { label: '项目名称', value: detailName },
-          { label: '项目类型', value: typeLabel },
-          { label: 'AI 能力', value: project.value!.aiCapabilityLabel },
-          { label: '项目描述', value: description },
-        ],
+        id: 'pool',
+        icon: '🪙',
+        label: '项目 Token 池',
+        value: poolValue,
+        delta: poolDelta,
+        tone: 'primary',
+        deltaTone: 'success',
       },
       {
-        title: '研发配置',
-        lines: [
-          { label: '分支策略', value: 'Git Flow（推荐）' },
-          { label: 'CI/CD 模板', value: '标准 Java / Web 双通道' },
-          { label: 'Token 配额', value: `${project.value!.tokenLabel} / 月` },
-          { label: '默认评审模型', value: 'claude-sonnet-4-6', mono: true },
-        ],
+        id: 'active',
+        icon: '👥',
+        label: '已开 AI 成员',
+        value: aiValue,
+        delta: aiDelta,
+        tone: 'default',
+        deltaTone: 'success',
       },
       {
-        title: '已关联原子能力',
-        list: [
-          {
-            title: '统一认证 SSO',
-            meta: '已在用户登录与后台管理接入',
-            badge: '启用',
-            tone: 'success' as const,
-          },
-          {
-            title: '短信服务',
-            meta: '验证码与消息通知均已开通',
-            badge: '启用',
-            tone: 'success' as const,
-          },
-          {
-            title: 'OSS 对象存储',
-            meta: '商品图片与订单附件统一托管',
-            badge: '启用',
-            tone: 'success' as const,
-          },
-        ],
+        id: 'daily',
+        icon: '📈',
+        label: '日均消耗',
+        value: dailyStr,
+        delta: dailyDelta,
+        tone: 'default',
+        deltaTone: 'success',
       },
       {
-        title: '治理提醒',
-        notes: [
-          { label: '建议', content: '将支付相关服务加入高风险审批清单，并提高事故演练频率。', tone: 'warning' as const },
-          { label: '说明', content: '项目设置会同步影响 MCP Server 暴露的工具集合与权限边界。', tone: 'primary' as const },
-        ],
+        id: 'warn',
+        icon: '⚠️',
+        label: '超限预警',
+        value: String(capN),
+        delta: warnDelta2,
+        tone: capN > 0 || firing > 0 ? 'warning' : 'success',
+        deltaTone: 'success',
       },
     ]
   }
 
-  const pt = projectTypeLabelMap[snap.projectType as BackendProjectType] ?? snap.projectType
-  const created = snap.createdAt?.slice(0, 10) ?? '—'
-  const updated = snap.updatedAt?.replace('T', ' ').slice(0, 19) ?? '—'
+  const apiRows = getProjectQuotaTableRows(projectId)
+  const sum = normalizeProjectUsageSummary(getProjectUsageSummaryRaw(projectId))
+
+  if (apiRows === undefined && projectSpaceState.loadingProjectId === projectId) {
+    return [
+      { id: 'l1', icon: '⏳', label: '同步中', value: '…', delta: '正在加载配额', tone: 'primary', deltaTone: 'default' },
+      { id: 'l2', icon: '⏳', label: '请稍候', value: '…', delta: '—', tone: 'default', deltaTone: 'default' },
+      { id: 'l3', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default', deltaTone: 'default' },
+      { id: 'l4', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default', deltaTone: 'default' },
+    ]
+  }
+
+  const rows = quotaTableRows
+  if (isQuotaTableLoading(rows)) {
+    return [
+      { id: 'l1', icon: '⏳', label: '同步中', value: '…', delta: '正在加载配额', tone: 'primary', deltaTone: 'default' },
+      { id: 'l2', icon: '⏳', label: '请稍候', value: '…', delta: '—', tone: 'default', deltaTone: 'default' },
+      { id: 'l3', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default', deltaTone: 'default' },
+      { id: 'l4', icon: '⏳', label: '—', value: '…', delta: '—', tone: 'default', deltaTone: 'default' },
+    ]
+  }
+
+  const usedFromSnap = snap?.usedTokensThisMonth
+  const quotaFromSnap = snap?.monthlyTokenQuota
+  const usedNum = sum.usedTokens ?? (usedFromSnap != null && usedFromSnap >= 0 ? usedFromSnap : undefined)
+  const quotaNum = sum.quotaTokens ?? (quotaFromSnap != null && quotaFromSnap > 0 ? quotaFromSnap : undefined)
+
+  const poolValue =
+    quotaNum !== undefined && Number.isFinite(quotaNum) && quotaNum > 0
+      ? formatTokensShortLocal(quotaNum)
+      : '—'
+
+  let poolDelta = '配额未配置'
+  if (quotaNum != null && quotaNum > 0 && usedNum != null && Number.isFinite(usedNum)) {
+    const pct =
+      sum.percentUsed !== undefined
+        ? Math.min(100, Math.round(sum.percentUsed))
+        : Math.min(100, Math.round((usedNum / quotaNum) * 100))
+    poolDelta = `本月已用 ${formatTokensShortLocal(usedNum)} · ${pct}%`
+  } else if (usedNum != null && Number.isFinite(usedNum)) {
+    poolDelta = `本月已用 ${formatTokensShortLocal(usedNum)}`
+  }
+
+  const totalMembers = Math.max(0, memberCount)
+  const totalForActive =
+    totalMembers > 0
+      ? totalMembers
+      : !isQuotaTableLoading(rows) && rows.length > 0
+        ? rows.length
+        : 0
+  const activeFromRows = countActiveConsumersFromQuotaRows(rows)
+  let activeN =
+    sum.activeMembers != null && Number.isFinite(sum.activeMembers)
+      ? Math.round(sum.activeMembers)
+      : activeFromRows
+  if (totalForActive > 0) {
+    activeN = Math.min(Math.max(0, activeN), totalForActive)
+  } else {
+    activeN = Math.max(0, activeN)
+  }
+  const idleN = totalForActive > 0 ? Math.max(0, totalForActive - activeN) : 0
+  const activeValue = totalForActive > 0 ? `${activeN} / ${totalForActive}` : `${activeN} / —`
+  const activeDelta =
+    idleN > 0 ? `${idleN} 人本月无消耗` : totalForActive > 0 ? '成员本月均有消耗' : '暂无成员数据'
+
+  const dayInMonth = new Date().getDate()
+  let dailyStr = '—'
+  let dailyDelta = '数据不足'
+  if (usedNum != null && Number.isFinite(usedNum) && usedNum >= 0) {
+    const daily = usedNum / Math.max(1, dayInMonth)
+    dailyStr = formatTokensShortLocal(daily)
+    if (quotaNum != null && quotaNum > 0) {
+      const projected = daily * 30
+      const ratio = projected / quotaNum
+      const tag = ratio <= 0.92 ? '（安全）' : ratio <= 1 ? '（关注）' : '（预警）'
+      dailyDelta = `预计月能用 ${formatTokensShortLocal(projected)}${tag}`
+    } else {
+      dailyDelta = `按当前节奏折算约 ${formatTokensShortLocal(daily * 30)} / 月`
+    }
+  }
+
+  const capWarnings = countPersonalCapWarnings(rows)
+  const warnDelta =
+    capWarnings > 0 ? `${capWarnings} 位成员已达或超过个人上限` : '无成员触及个人上限'
 
   return [
     {
-      title: '基础信息',
-      lines: [
-        { label: '项目 ID', value: String(snap.id), mono: true },
-        { label: '编码 code', value: snap.code, mono: true },
-        { label: '名称', value: snap.name },
-        { label: '类型', value: pt },
-        { label: '状态', value: snap.status },
-        { label: '描述', value: snap.description?.trim() || '—' },
-        { label: '图标', value: snap.icon?.trim() || '—' },
-        { label: '创建日期', value: created },
-        {
-          label: '负责人 ownerUserId',
-          value: snap.ownerUserId != null ? String(snap.ownerUserId) : '—',
-          mono: true,
-        },
-        {
-          label: '创建人 createdBy',
-          value: snap.createdBy != null ? String(snap.createdBy) : '—',
-          mono: true,
-        },
-        { label: 'updatedAt', value: updated },
-      ],
+      id: 'pool',
+      icon: '🪙',
+      label: '项目 Token 池',
+      value: poolValue,
+      delta: poolDelta,
+      tone: 'primary',
+      deltaTone: 'success',
     },
     {
-      title: '研发配置（演示）',
-      lines: [
-        { label: '说明', value: '下列为 UI 占位；后端暂无统一「项目级研发模板」接口。' },
-        { label: 'CI/CD 模板', value: '标准 Java / Web 双通道（演示）' },
-        { label: 'Token 展示', value: `${project.value!.tokenLabel} / 月（列表或用量摘要）` },
-        { label: '默认评审模型', value: 'claude-sonnet-4-6', mono: true },
-      ],
+      id: 'active',
+      icon: '👥',
+      label: '活跃消耗成员',
+      value: activeValue,
+      delta: activeDelta,
+      tone: 'default',
+      deltaTone: 'success',
     },
     {
-      title: '已关联原子能力（演示）',
-      list: [
-        { title: '统一认证 SSO', meta: '演示数据', badge: '演示', tone: 'muted' as const },
-        { title: '短信服务', meta: '演示数据', badge: '演示', tone: 'muted' as const },
-        { title: 'OSS 对象存储', meta: '演示数据', badge: '演示', tone: 'muted' as const },
-      ],
+      id: 'daily',
+      icon: '📈',
+      label: '日均消耗',
+      value: dailyStr,
+      delta: dailyDelta,
+      tone: 'default',
+      deltaTone: 'success',
     },
     {
-      title: '治理提醒',
-      notes: [
-        {
-          label: '说明',
-          content: '基础信息来自后端项目 DTO；原子能力与部分流程仍为原型。',
-          tone: 'primary' as const,
-        },
-        {
-          label: '建议',
-          content: '将支付相关服务加入高风险审批清单，并提高事故演练频率。',
-          tone: 'warning' as const,
-        },
-      ],
+      id: 'warn',
+      icon: '⚠️',
+      label: '超限预警',
+      value: String(capWarnings),
+      delta: warnDelta,
+      tone: capWarnings > 0 ? 'warning' : 'success',
+      deltaTone: 'success',
     },
   ]
+}
+
+function incidentFocusSectionForProject(projectId: string): ModuleSection {
+  if (!isNumericBackendProject(projectId)) {
+    return { type: 'incident-focus' }
+  }
+  const list = getProjectIncidentsList(projectId)
+  if (list === undefined) {
+    return { type: 'incident-focus' }
+  }
+  if (list.length === 0) {
+    return {
+      type: 'incident-focus',
+      incident: null,
+      emptyHint: '当前项目暂无事故记录。',
+    }
+  }
+  const primary = pickPrimaryIncident(list)!
+  return {
+    type: 'incident-focus',
+    incident: incidentToCardModel(primary),
+  }
 }
 
 function workspaceMcpSlug(projectId: string): string {
@@ -626,167 +844,56 @@ function buildWorkspaceSections(projectId: string, projectName: string): ModuleS
     memberRows: [
       [
         cell('张三'),
-        cell('技术负责人'),
-        cell('有效', 'success'),
-        cell('✅ 已接入', 'success'),
-        cell('5 分钟前'),
+        cell('1001', undefined, true),
+        cell('ADMIN'),
+        cell('有效 · 至 2026-06-19', 'success', false, 'tag'),
+        cell('2025-01-10'),
         cell('详情'),
       ],
       [
         cell('李四'),
-        cell('前端开发'),
-        cell('有效', 'success'),
-        cell('✅ 已接入', 'success'),
-        cell('20 分钟前'),
+        cell('1002', undefined, true),
+        cell('DEVELOPER'),
+        cell('有效', 'success', false, 'tag'),
+        cell('2025-02-01'),
         cell('详情'),
       ],
       [
         cell('王五'),
-        cell('后端开发'),
-        cell('3天后过期', 'warning'),
-        cell('✅ 已接入', 'success'),
-        cell('1 小时前'),
-        cell('详情 · 提醒续签'),
+        cell('1003', undefined, true),
+        cell('DEVELOPER'),
+        cell('3天后过期', 'warning', false, 'tag'),
+        cell('2025-02-15'),
+        cell('详情'),
       ],
       [
         cell('赵六'),
-        cell('测试工程师'),
-        cell('有效', 'success'),
-        cell('📦 未接入', 'muted'),
+        cell('1004', undefined, true),
+        cell('QA'),
+        cell('未创建', 'muted', false, 'tag'),
         cell('—'),
-        cell('详情 · 发送指南'),
+        cell('详情'),
       ],
       [
         cell('钱七'),
-        cell('产品经理'),
-        cell('有效', 'success'),
-        cell('✅ 已接入', 'success'),
-        cell('今天 14:00'),
+        cell('1005', undefined, true),
+        cell('PM'),
+        cell('有效 · 剩余180天', 'success', false, 'tag'),
+        cell('2026-01-20'),
         cell('详情'),
       ],
       [
         cell('ci-bot-mall（🤖 服务账号）'),
-        cell('CI/CD'),
-        cell('有效', 'success'),
-        cell('✅ 运行中', 'success'),
-        cell('2 分钟前'),
+        cell('9001', undefined, true),
+        cell('GUEST'),
+        cell('有效', 'success', false, 'tag'),
+        cell('2025-06-01'),
         cell('详情'),
       ],
     ],
   })
 }
 
-function aiCapCatalogItems(projectId: string): CatalogItem[] {
-  const mockItems: CatalogItem[] = [
-    {
-      icon: '🧠',
-      title: '模型路由',
-      subtitle: '默认 / 高风险 / 低成本',
-      badge: '已配置',
-      tone: 'success',
-      description: 'Review 走 Sonnet，生产变更走 Opus 审批，低成本场景回退 Haiku。',
-    },
-    {
-      icon: '📚',
-      title: '知识库',
-      subtitle: '全局 + 项目',
-      badge: '继承',
-      tone: 'primary',
-      description: '全局规范默认开启；可挂载项目需求 / 接口 / 原型资产。',
-    },
-    {
-      icon: '🔩',
-      title: '工具白名单',
-      subtitle: 'MCP / Function',
-      badge: '最小权限',
-      tone: 'warning',
-      description: '按角色裁剪可调用的工具；高风险工具绑定二次确认与审计。',
-    },
-  ]
-
-  if (!isNumericBackendProject(projectId)) return mockItems
-
-  const [m0, m1, m2] = mockItems
-  if (!m0 || !m1 || !m2) return mockItems
-
-  const loading = projectSpaceState.loadingProjectId === projectId
-  const kb = getProjectKnowledgeTableRows(projectId)
-  const sk = getProjectSkillTableRows(projectId)
-  const tl = getProjectToolTableRows(projectId)
-
-  const countBadge = (rows: TableCell[][] | undefined) => {
-    if (rows === undefined) return loading ? '加载中' : '—'
-    return `${rows.length} 条`
-  }
-
-  const kbDesc = kb === undefined ? (loading ? '…' : '—') : String(kb.length)
-
-  return [
-    {
-      icon: m0.icon,
-      title: m0.title,
-      subtitle: m0.subtitle,
-      badge: '原型',
-      tone: m0.tone,
-      description: '模型路由配置走后端能力中心；此处为能力总览占位。',
-    },
-    {
-      icon: m1.icon,
-      title: m1.title,
-      subtitle: '知识库 Tab 行数（当前后端未接则恒为 0）',
-      badge: countBadge(kb),
-      tone: m1.tone,
-      description: `刷新后表格行数：${kbDesc}（占位模块，待接入知识库 API）。`,
-    },
-    {
-      icon: m2.icon,
-      title: m2.title,
-      subtitle: `Skill ${countBadge(sk)} · 工具 ${countBadge(tl)}`,
-      badge: '行数',
-      tone: m2.tone,
-      description: 'Skill / 工具 Tab 为占位行数；待接入对应后端接口后替换。',
-    },
-  ]
-}
-
-// Monitor section changes for key management
-watch(
-  section,
-  (newSection, oldSection) => {
-    if (oldSection === 'keymanagement' && newSection !== 'keymanagement') {
-      console.log('离开Key管理页面，停止监控')
-      stopMonitoring()
-    }
-
-    if (newSection === 'keymanagement' && oldSection !== 'keymanagement') {
-      console.log('进入Key管理页面，启动监控')
-      setTimeout(() => {
-        startMonitoring()
-      }, 1000) // Delay to ensure component is fully mounted
-    }
-  },
-  { immediate: false }
-)
-
-// Auto-start monitoring if landing directly on key management
-onMounted(() => {
-  if (section.value === 'keymanagement') {
-    console.log('直接访问Key管理页面，启动监控')
-    setTimeout(() => {
-      startMonitoring()
-    }, 1500)
-  }
-})
-
-// Cleanup on unmount
-onUnmounted(() => {
-  if (isMonitoring.value) {
-    console.log('组件卸载，停止监控')
-    stopMonitoring()
-  }
-})
-
-// ??????? section ??????????????????????
 const pageConfig = computed<ModulePageConfig>(() => {
   if (!project.value) {
     return { sections: [] }
@@ -927,19 +1034,31 @@ const pageConfig = computed<ModulePageConfig>(() => {
     },
     'ai-cap': {
       sections: [
+        ...(isNumericBackendProject(projectId)
+          ? [
+              {
+                type: 'notes' as const,
+                title: '数据说明',
+                notes: [
+                  {
+                    content:
+                      '知识库 Tab：「继承自企业全局知识库」请求 knowledge-sources?source=global；「项目专属知识库」表格请求 source=PROJECT。其余区块多为原型。',
+                    tone: 'warning' as const,
+                  },
+                ],
+              },
+            ]
+          : []),
         {
-          type: 'hero',
-          eyebrow: `${project.value.name} / AI`,
-          title: 'AI 能力配置',
-          description: isNumericBackendProject(projectId)
-            ? '数字项目下，知识库 / Skill / 工具行数来自已接入的查询接口；模型路由等仍以占位说明为主。'
-            : '为本项目启用模型路由、知识库继承、Skill 与工具白名单；变更会同步影响 MCP 暴露集合。',
-          actions: [{ label: '保存配置', variant: 'primary' }, { label: '同步平台默认' }],
-        },
-        {
-          type: 'catalog-grid',
-          columns: 3,
-          items: aiCapCatalogItems(projectId),
+          type: 'ai-capacity',
+          projectName: project.value.name,
+          projectId,
+          inheritedGlobalKbs: isNumericBackendProject(projectId)
+            ? getProjectInheritedGlobalKbs(projectId)
+            : undefined,
+          knowledgeTable: knowledgeTableForProject(projectId),
+          skillTable: skillTableForProject(projectId),
+          toolTable: toolTableForProject(projectId),
         },
       ],
     },
@@ -969,29 +1088,9 @@ const pageConfig = computed<ModulePageConfig>(() => {
     services: {
       sections: [
         {
-          type: 'hero',
-          eyebrow: `${project.value.name} / Services`,
-          title: '代码服务',
-          description: '管理项目下的代码服务、仓库信息、环境状态和接入方式。',
-          actions: [
-            { label: '+ 添加服务', variant: 'primary' },
-            { label: '查看仓库接入规范' },
-          ],
-        },
-        {
-          type: 'catalog-grid',
-          columns: 3,
+          type: 'services-prototype',
+          serviceCount: project.value.services.length,
           items: buildServiceCards(projectId),
-        },
-        {
-          type: 'catalog-grid',
-          columns: 3,
-          title: '添加新服务',
-          items: [
-            { icon: '🗂️', title: '选择模板创建', subtitle: '从公司标准模板快速初始化服务', description: '适合新建 BFF、前端控制台、Java 服务或 Python 数据服务。' },
-            { icon: '🔗', title: '关联已有仓库', subtitle: '填入 Git 地址，自动识别技术栈', description: '会自动补全主干分支、CI/CD 模板与基础监控配置。' },
-            { icon: '📥', title: '导入 Git 仓库', subtitle: '从 GitHub / GitLab / 自建 Git 导入', description: '支持批量导入并自动生成 MCP Server 接入信息。' },
-          ],
         },
       ],
     },
@@ -1021,18 +1120,6 @@ const pageConfig = computed<ModulePageConfig>(() => {
     },
     incidents: {
       sections: [
-        {
-          type: 'hero',
-          eyebrow: `${project.value.name} / Incident`,
-          title: '项目事故',
-          description: isNumericBackendProject(projectId)
-            ? '下方列表为事故响应流程的原型演示，后端暂无事故 / 诊断 API；请勿当作真实工单。'
-            : '查看项目事故详情、AI 根因分析和修复建议，支持直接在 IDE 领取处理。',
-          actions: [
-            { label: '新建事故', variant: 'primary' },
-            { label: '拉取诊断报告' },
-          ],
-        },
         ...(isNumericBackendProject(projectId)
           ? [
               {
@@ -1040,65 +1127,24 @@ const pageConfig = computed<ModulePageConfig>(() => {
                 title: '数据说明',
                 notes: [
                   {
-                    content: '卡片中的事故与 AI 诊断文案均为静态示例。',
+                    content:
+                      '列表来自 GET /projects/{id}/incidents；展示首条未关闭事故。告警规则见 GET /alert-events（本页未全量接入）。',
                     tone: 'warning' as const,
                   },
                 ],
               },
             ]
           : []),
-        {
-          type: 'list-grid',
-          columns: 2,
-          cards: [
-            {
-              title: '当前重点事故',
-              items: [
-                {
-                  title: '支付服务 NullPointerException - mall-backend',
-                  meta: '严重 · 处理中',
-                  description: 'AI 诊断认为 checkout 接口未对 paymentMethod 做非空校验，建议在 OrderController 增加参数校验并补偿回滚。',
-                  badge: '处理中',
-                  tone: 'danger',
-                },
-                {
-                  title: '前端打包体积超限',
-                  meta: '提示 · 观察中',
-                  description: '搜索模块引入的图表依赖导致 bundle 增大，建议拆分懒加载。',
-                  badge: 'AI 分析中',
-                  tone: 'primary',
-                },
-              ],
-            },
-            {
-              title: 'AI 诊断',
-              items: [
-                { title: '根因定位', meta: 'OrderController:89 参数校验缺失', badge: '已完成', tone: 'success' },
-                { title: '修复建议', meta: '增加空值校验 + 失败补偿事务', badge: '待确认', tone: 'warning' },
-                { title: 'IDE 接力', meta: '可直接创建修复任务并在 IDE 中一键领取', badge: '可执行', tone: 'primary' },
-              ],
-            },
-          ],
-        },
+        incidentFocusSectionForProject(projectId),
       ],
     },
     // ?? / Skill / ??????
     members: {
       sections: [
         {
-          type: 'hero',
-          eyebrow: `${project.value.name} / Members`,
-          title: '成员权限',
-          description: '管理项目成员、角色、Token 配额以及知识库和 Skill 的使用权限。',
-          actions: [
-            { label: '邀请成员', variant: 'primary' },
-            { label: '批量调整权限' },
-          ],
-        },
-        {
           type: 'table',
-          title: '成员列表',
-          badge: isNumericBackendProject(projectId) ? '已同步' : undefined,
+          title: '项目成员权限',
+          actions: [{ label: '+ 添加成员', variant: 'primary' }],
           table: membersTableForProject(projectId),
         },
       ],
@@ -1128,58 +1174,43 @@ const pageConfig = computed<ModulePageConfig>(() => {
     },
     keymanagement: {
       sections: [
-        {
-          type: 'hero',
-          eyebrow: `${project.value.name} / Key Management`,
-          title: 'Key 管理中心',
-          description: isNumericBackendProject(projectId)
-            ? '上方为成员配额与用量列表等实时拉取数据；下方「实时使用」区块为界面演示，不代表生产监控。'
-            : '统一管理项目 API Key 分配、配额监控、使用统计和异常告警。',
-          actions: [
-            { label: '分配新 Key', variant: 'primary' },
-            { label: '导出使用报告' },
-          ],
-        },
-        {
-          type: 'metrics',
-          items: keyMetricsForProject(projectId),
-        },
-        {
-          type: 'table',
-          title: isNumericBackendProject(projectId) ? '成员 AI 配额' : '成员 Key 分配',
-          badge: isNumericBackendProject(projectId) ? '配额' : undefined,
-          table: quotaTableForKeyManagement(projectId),
-        },
-        {
-          type: 'split',
-          columns: 2,
-          items: keyManagementSplitItems(projectId),
-        },
-        {
-          type: 'list-grid',
-          columns: 2,
-          cards: keyManagementListGridCards(projectId),
-        },
+        (() => {
+          void tokenDashboardRevision.value
+          const memberQuotaTable = memberQuotaTableForProject(projectId)
+          return {
+            type: 'quota-management' as const,
+            projectId,
+            metrics: quotaPageMetrics(projectId, project.value.memberCount, memberQuotaTable.rows),
+            memberQuotaTable,
+            tokenDashboard: getProjectTokenDashboardBundle(projectId) ?? null,
+          }
+        })(),
       ],
     },
     psettings: {
       sections: [
+        ...(isNumericBackendProject(projectId)
+          ? [
+              {
+                type: 'notes' as const,
+                title: '说明',
+                notes: [
+                  {
+                    content: '表单布局与原型一致；部分字段仍以后端项目档案为准，保存动作为界面占位。',
+                    tone: 'warning' as const,
+                  },
+                ],
+              },
+            ]
+          : []),
         {
-          type: 'hero',
-          eyebrow: `${project.value.name} / Settings`,
-          title: '项目设置',
-          description: isNumericBackendProject(projectId)
-            ? '基础信息与平台项目档案同步；研发配置、原子能力关联等模块仍为界面原型，便于评审布局。'
-            : '维护项目基础信息、Token 配额、模板和原子能力关联。',
-          actions: [
-            { label: '保存项目设置', variant: 'primary' },
-            { label: '查看变更记录' },
-          ],
-        },
-        {
-          type: 'split',
-          columns: 2,
-          items: psettingsSplitItems(projectId, project.value.name, project.value.typeLabel, project.value.description),
+          type: 'project-settings-forms',
+          projectId,
+          name: getProjectApiSnapshot(projectId)?.name?.trim() || project.value.name,
+          typeLabel: project.value.typeLabel,
+          description:
+            getProjectApiSnapshot(projectId)?.description?.trim() || project.value.description || '—',
+          tokenLabel: project.value.tokenLabel,
         },
       ],
     },
@@ -1203,12 +1234,6 @@ const pageConfig = computed<ModulePageConfig>(() => {
 
   <section v-else data-testid="project-module-page">
     <ModuleContent :sections="pageConfig.sections" />
-
-    <!-- Key Management Monitor - only show for keymanagement section -->
-    <KeyManagementMonitor
-      v-if="section === 'keymanagement'"
-      :auto-start="false"
-    />
   </section>
 </template>
 

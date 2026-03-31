@@ -15,6 +15,11 @@ export function listProjects(page = 1, size = 100) {
   return requestJson<PageResponse<BackendProjectResponse>>(withQuery('/projects', { page, size }))
 }
 
+/** GET `/projects/dashboard` — 项目空间列表聚合（项目 + 成员/服务/AI 能力计数等） */
+export function getProjectsDashboard() {
+  return requestJson<unknown>('/projects/dashboard')
+}
+
 export function getProject(id: number) {
   return requestJson<BackendProjectResponse>(`/projects/${id}`)
 }

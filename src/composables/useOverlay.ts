@@ -5,7 +5,13 @@ import { enableProjectKnowledgeBase } from '../services/knowledge'
 import { addProjectMember, getProject, updateProject } from '../services/projects'
 import { enableProjectSkill } from '../services/skills'
 import type { BackendProjectResponse, BackendProjectType, UpdateBackendProjectPayload } from '../types/project'
-import { createProject, projectTypeLabelMap, refreshProjectSpaceFromApi, loadProjects } from './useProjects'
+import {
+  createProject,
+  loadProjectQuotaTokenDashboardFromApi,
+  loadProjects,
+  projectTypeLabelMap,
+  refreshProjectCoreFromApi,
+} from './useProjects'
 
 export type OverlayKind = 'none' | 'notifications' | 'new-project' | 'edit-project' | 'action'
 
@@ -276,7 +282,9 @@ export async function submitEditProjectDraft() {
     }
 
     await updateProject(pid, payload)
-    await refreshProjectSpaceFromApi(String(pid))
+    const idStr = String(pid)
+    await refreshProjectCoreFromApi(idStr)
+    await loadProjectQuotaTokenDashboardFromApi(idStr)
     await loadProjects(true)
     closeOverlay()
   } catch (error) {

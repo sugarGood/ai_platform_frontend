@@ -46,7 +46,13 @@ function onEditClick(projectId: string, event: MouseEvent) {
           <td>{{ project.typeLabel }}</td>
           <td>{{ project.serviceCount }} 个服务</td>
           <td>{{ project.memberCount }} 人</td>
-          <td>{{ project.aiCapabilityLabel }}</td>
+          <td>
+            {{
+              project.aiCapabilityItems?.length
+                ? project.aiCapabilityItems.map((x) => `${x.label} ${x.count}`).join(' · ')
+                : project.aiCapabilityLabel
+            }}
+          </td>
           <td>{{ project.tokenLabel }}</td>
           <td>{{ project.statusLabel }}</td>
           <td class="project-table-actions-col" @click.stop>

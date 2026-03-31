@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api-docs": "curl.exe -sS http://localhost:8080/v3/api-docs -o _api_docs.json",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest --run"

@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import ProjectCard from '../../components/ui/ProjectCard.vue'
-import ProjectTable from '../../components/ui/ProjectTable.vue'
 import { projectTypeLabelMap, projectTypeOptions, useProjects } from '../../composables/useProjects'
 import { useOverlay } from '../../composables/useOverlay'
 import type { BackendProjectType, ProjectSummary } from '../../types/project'
@@ -155,21 +154,21 @@ function editProject(projectId: string) {
           </button>
         </div>
       </div>
-      <p v-if="hasList" class="projects-filter-hint">共 {{ projectSummaries.length }} 个项目，当前显示 {{ filteredProjects.length }} 个（点击「搜索」应用条件）</p>
+      <p v-if="hasList" class="projects-filter-hint">
+        共 {{ projectSummaries.length }} 个项目，当前显示 {{ filteredProjects.length }} 个（点击「搜索」应用条件）
+      </p>
     </div>
 
     <template v-if="hasList && !filterEmpty">
-      <div class="grid-3" style="margin-bottom: 20px">
+      <div class="projects-card-grid">
         <ProjectCard
-          v-for="project in filteredProjects.slice(0, 3)"
+          v-for="project in filteredProjects"
           :key="project.id"
           :project="project"
           @click="enterProject"
           @edit="editProject"
         />
       </div>
-
-      <ProjectTable :projects="filteredProjects" @select="enterProject" @edit="editProject" />
     </template>
 
     <section v-else-if="filterEmpty" class="proto-empty" data-testid="projects-filter-empty">
@@ -265,6 +264,25 @@ function editProject(projectId: string) {
   font-size: 12px;
   color: var(--sub);
   line-height: 1.5;
+}
+
+.projects-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 1100px) {
+  .projects-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .projects-card-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .proto-banner {

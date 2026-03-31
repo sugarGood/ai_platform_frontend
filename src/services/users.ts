@@ -108,3 +108,12 @@ export function resetUserPasswordByAdmin(id: number, body: AdminResetPasswordReq
     body: JSON.stringify(body),
   })
 }
+
+/** PATCH `/api/users/{id}/platform-role` — 与后端 `UpdateUserPlatformRoleRequest` 一致 */
+export function updateUserPlatformRole(id: number, platformRole: string) {
+  return requestJson<UserResponse>(`/users/${id}/platform-role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ platformRole }),
+  })
+}
+

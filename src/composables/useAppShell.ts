@@ -30,6 +30,9 @@ export function useAppShell() {
       if (route.name === 'project-lezhi') {
         return `${projectName} · 乐知助手`
       }
+      if (route.name === 'project-knowledge-docs') {
+        return `${projectName} · 知识库文档`
+      }
       if (route.name === 'project-module' && typeof route.params.section === 'string') {
         const sec = PROJECT_SECTION_TITLES[route.params.section] ?? route.params.section
         return `${projectName} · ${sec}`

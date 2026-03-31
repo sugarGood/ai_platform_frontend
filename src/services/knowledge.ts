@@ -4,6 +4,8 @@ import type {
   KbDocumentResponse,
   KnowledgeBaseResponse,
   ProjectKnowledgeConfigResponse,
+  ProjectKnowledgeSourcesResponse,
+  UpdateProjectKnowledgeConfigRequest,
 } from '../types/knowledge'
 
 import { asArray, requestJson, requestOk, withQuery } from '../lib/api-client'
@@ -26,6 +28,22 @@ export function createKnowledgeBase(body: CreateKnowledgeBaseRequest) {
   return requestJson<KnowledgeBaseResponse>('/knowledge-bases', {
     method: 'POST',
     body: JSON.stringify(body),
+  })
+}
+
+/**
+ * POST `/knowledge-bases` — 创建项目专属知识库（OpenAPI `CreateKnowledgeBaseRequest`）。
+ * 固定 `scope: PROJECT` 并写入 `projectId`，与接口文档中「绑定项目 + 作用域」一致。
+ */
+export function createProjectDedicatedKnowledgeBase(
+  projectId: number,
+  body: Pick<CreateKnowledgeBaseRequest, 'name'> &
+    Partial<Omit<CreateKnowledgeBaseRequest, 'name' | 'scope' | 'projectId'>>,
+) {
+  return createKnowledgeBase({
+    ...body,
+    scope: 'PROJECT',
+    projectId,
   })
 }
 
@@ -114,9 +132,79 @@ export function listProjectKnowledgeConfigs(projectId: number) {
   return requestJson<ProjectKnowledgeConfigResponse[]>(`/projects/${projectId}/knowledge-configs`)
 }
 
-export function enableProjectKnowledgeBase(projectId: number, kbId: number, searchWeight?: number) {
+/**
+ * GET `/projects/{projectId}/knowledge-sources`
+ * 统一返回项目专属与继承的全局知识库（`items[].kind`：`DEDICATED` / `GLOBAL_INHERITED`）。
+ * @param source 可选：`all`（默认）、`dedicated` / `project` / `PROJECT` / `exclusive`、`global` / `inherited`
+ */
+export async function listProjectKnowledgeSources(projectId: number, source?: string) {
+  const raw = await requestJson<unknown>(
+    withQuery(`/projects/${projectId}/knowledge-sources`, {
+      source: source?.trim() || undefined,
+    }),
+  )
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    !Array.isArray(raw) &&
+    Array.isArray((raw as ProjectKnowledgeSourcesResponse).items)
+  ) {
+    return raw as ProjectKnowledgeSourcesResponse
+  }
+  return { items: [] as ProjectKnowledgeSourcesResponse['items'] }
+}
+
+export type EnableProjectKnowledgeBaseOptions = {
+  searchWeight?: number
+  /** 与后端约定：`AUTO_INJECT` / `ON_DEMAND` / `DISABLED` */
+  injectMode?: string
+}
+
+/**
+ * POST `/projects/{projectId}/knowledge-configs` — 为项目启用全局知识库。
+ * `searchWeight` 可为数字；亦可传入 `{ searchWeight, injectMode }`。
+ */
+export function enableProjectKnowledgeBase(
+  projectId: number,
+  kbId: number,
+  opts?: number | EnableProjectKnowledgeBaseOptions,
+) {
+  const o: EnableProjectKnowledgeBaseOptions =
+    typeof opts === 'number' ? { searchWeight: opts } : opts ?? {}
   return requestJson<ProjectKnowledgeConfigResponse>(
-    withQuery(`/projects/${projectId}/knowledge-configs`, { kbId, searchWeight }),
+    withQuery(`/projects/${projectId}/knowledge-configs`, {
+      kbId,
+      searchWeight: o.searchWeight,
+      injectMode: o.injectMode?.trim() || undefined,
+    }),
     { method: 'POST' },
   )
+}
+
+/**
+ * PUT `/projects/{projectId}/knowledge-configs/{id}`
+ * 修改项目知识库绑定（注入方式、检索权重、状态等，请求体仅含需更新的字段）。
+ */
+export function updateProjectKnowledgeConfig(
+  projectId: number,
+  configId: number,
+  body: UpdateProjectKnowledgeConfigRequest,
+) {
+  const payload: Record<string, unknown> = {}
+  if (body.injectMode !== undefined) {
+    const t = body.injectMode.trim()
+    if (t) payload.injectMode = t
+  }
+  if (body.searchWeight !== undefined) payload.searchWeight = body.searchWeight
+  if (body.status !== undefined && body.status.trim()) payload.status = body.status.trim()
+
+  return requestJson<ProjectKnowledgeConfigResponse>(
+    `/projects/${projectId}/knowledge-configs/${configId}`,
+    { method: 'PUT', body: JSON.stringify(payload) },
+  )
+}
+
+/** DELETE `/projects/{projectId}/knowledge-configs/{id}` — 取消项目对某全局知识库的继承 */
+export function deleteProjectKnowledgeConfig(projectId: number, configId: number) {
+  return requestOk(`/projects/${projectId}/knowledge-configs/${configId}`, { method: 'DELETE' })
 }

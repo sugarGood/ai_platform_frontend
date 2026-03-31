@@ -55,11 +55,19 @@ function onEditClick(event: MouseEvent) {
     <dl class="project-card-meta">
       <div>
         <dt>代码服务</dt>
-        <dd>{{ project.serviceCount }} 个</dd>
+        <dd>{{ project.listMetricsLoaded === false ? '…' : `${project.serviceCount} 个` }}</dd>
       </div>
-      <div>
-        <dt>AI 能力状态</dt>
-        <dd>{{ project.aiCapabilityLabel }}</dd>
+      <div class="project-card-meta-ai">
+        <dt>AI 能力</dt>
+        <dd>
+          <ul v-if="project.listMetricsLoaded !== false" class="project-card-ai-list" aria-label="AI 能力数量">
+            <li v-for="row in project.aiCapabilityItems" :key="row.label">
+              <span class="project-card-ai-label">{{ row.label }}</span>
+              <span class="project-card-ai-count">{{ row.count }}</span>
+            </li>
+          </ul>
+          <span v-else class="project-card-ai-pending">同步中…</span>
+        </dd>
       </div>
       <div>
         <dt>本月 Token</dt>
@@ -69,11 +77,26 @@ function onEditClick(event: MouseEvent) {
 
     <div class="project-card-footer">
       <div class="project-card-avatars">
-        <span v-for="member in project.members.slice(0, 3)" :key="member" class="project-card-avatar">
-          {{ member }}
-        </span>
+        <template v-if="project.memberAvatarUrls && project.memberAvatarUrls.length">
+          <img
+            v-for="url in project.memberAvatarUrls.slice(0, 6)"
+            :key="url"
+            :src="url"
+            class="project-card-avatar project-card-avatar-img"
+            :alt="project.name + ' 成员头像'"
+          />
+        </template>
+        <template v-else>
+          <span
+            v-for="member in project.members.slice(0, 3)"
+            :key="member"
+            class="project-card-avatar"
+          >{{ member.slice(0, 1) }}</span>
+        </template>
       </div>
-      <span class="project-card-summary">{{ project.memberCount }} 位成员</span>
+      <span class="project-card-summary">{{
+        project.listMetricsLoaded === false ? '成员同步中…' : `${project.memberCount} 位成员`
+      }}</span>
     </div>
   </article>
 </template>
@@ -197,6 +220,44 @@ function onEditClick(event: MouseEvent) {
   min-width: 0;
 }
 
+.project-card-meta-ai dd {
+  margin-top: 6px;
+}
+
+.project-card-ai-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-card-ai-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.project-card-ai-label {
+  color: var(--text-subtle);
+  font-weight: 500;
+}
+
+.project-card-ai-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-card-ai-pending {
+  font-size: 12px;
+  color: var(--text-subtle);
+  font-weight: 500;
+}
+
 .project-card-meta dt {
   font-size: 12px;
 }
@@ -227,6 +288,12 @@ function onEditClick(event: MouseEvent) {
   color: white;
   font-size: 12px;
   font-weight: 700;
+  flex-shrink: 0;
+}
+
+.project-card-avatar-img {
+  object-fit: cover;
+  background: var(--primary-soft);
 }
 </style>
 

@@ -5,6 +5,12 @@ export type ProjectStatusTone = 'success' | 'warning'
 /** Aligns with backend `CreateProjectRequest.projectType` (PRODUCT | PLATFORM | DATA | OTHER). */
 export type BackendProjectType = 'PRODUCT' | 'PLATFORM' | 'DATA' | 'OTHER'
 
+/** 项目列表卡片：技能 / 工具 / 知识库等数量（来自各项目明细接口） */
+export interface ProjectAiCapabilityCount {
+  label: string
+  count: number
+}
+
 export interface ProjectSummary {
   id: string
   name: string
@@ -17,12 +23,21 @@ export interface ProjectSummary {
   description: string
   statusLabel: string
   statusTone: ProjectStatusTone
-  /** 列表/卡片展示的 AI 能力概要，如「5/6 · 58%」 */
+  /** 列表/表格用一行摘要，如「技能 3 · 工具 2 · 知识库 1」 */
   aiCapabilityLabel: string
+  /** 卡片分项展示 */
+  aiCapabilityItems: ProjectAiCapabilityCount[]
+  /**
+   * 数字 ID 项目在拉齐成员/服务/技能/工具/知识库前为 false，避免误展示占位 0。
+   * 本地 mock 或非数字 ID 可为 true。
+   */
+  listMetricsLoaded?: boolean
   tokenLabel: string
   serviceCount: number
   memberCount: number
   members: string[]
+  /** 成员头像 URL 列表（来自 /projects/dashboard 的 memberAvatars 字段） */
+  memberAvatarUrls?: string[]
 }
 
 export interface ProjectServiceHealth {
@@ -62,18 +77,27 @@ export interface BackendProjectResponse {
   monthlyTokenQuota?: number | null
   alertThresholdPct?: number | null
   overQuotaStrategy?: string | null
+  /** Token Dashboard / 配额：任务周期，如 MONTHLY */
+  quotaResetCycle?: string | null
+  /** 单次请求 Token 上限；与 dashboard /config 对齐 */
+  perRequestTokenLimit?: number | null
   usedTokensThisMonth?: number | null
   status: string
   createdAt: string | null
   updatedAt: string | null
 }
 
+/** 对齐 OpenAPI `ProjectMemberResponse`（GET/POST `/api/projects/{projectId}/members`） */
 export interface BackendProjectMemberResponse {
   id: number
   projectId: number
   userId: number
   role: string
   joinedAt: string | null
+  /** NONE / VALID / EXPIRING_SOON / EXPIRED / REVOKED / DISABLED */
+  credentialStatus?: string | null
+  credentialExpiresInDays?: number | null
+  credentialExpiresAt?: string | null
 }
 
 /** Aligns with backend `ServiceResponse`. */
@@ -101,6 +125,8 @@ export interface CreateBackendProjectPayload {
   monthlyTokenQuota?: number | null
   alertThresholdPct?: number | null
   overQuotaStrategy?: string | null
+  quotaResetCycle?: string | null
+  perRequestTokenLimit?: number | null
 }
 
 /** 对齐后端 `UpdateProjectRequest`：仅非 null 字段会更新 */
@@ -112,4 +138,6 @@ export interface UpdateBackendProjectPayload {
   monthlyTokenQuota?: number | null
   alertThresholdPct?: number | null
   overQuotaStrategy?: string | null
+  quotaResetCycle?: string | null
+  perRequestTokenLimit?: number | null
 }

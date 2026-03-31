@@ -1,18 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ModuleContent from '../../components/ui/ModuleContent.vue'
 import GlobalKnowledgeWorkspace from './GlobalKnowledgeWorkspace.vue'
+import GlobalAtomicWorkspace from './GlobalAtomicWorkspace.vue'
+import GlobalIntegrationsWorkspace from './GlobalIntegrationsWorkspace.vue'
+import GlobalSkillsLibraryWorkspace from './GlobalSkillsLibraryWorkspace.vue'
+import GlobalTemplatesWorkspace from './GlobalTemplatesWorkspace.vue'
+import GlobalToolsWorkspace from './GlobalToolsWorkspace.vue'
 import { prototypeGlobalPagesExtra } from '../../mocks/prototypeGlobalPagesExtra'
-import { listSkills } from '../../services/skills'
 import type { ModulePageConfig, TableCell } from '../../types/module-page'
-
-const skillList = ref<Awaited<ReturnType<typeof listSkills>>>([])
-
-onMounted(async () => {
-  try { skillList.value = await listSkills() } catch { /* non-critical */ }
-})
 
 const route = useRoute()
 
@@ -473,102 +471,6 @@ const pageConfigs: Record<string, ModulePageConfig> = {
       },
     ],
   },
-  // ??????
-  atomic: {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Atomic Capability',
-        title: '原子能力中心',
-        description: '沉淀公司级基础能力与标准接入文档，让项目和 Agent 能快速复用。',
-        actions: [
-          { label: '注册原子能力', variant: 'primary' },
-          { label: '查看接入统计' },
-        ],
-      },
-      {
-        type: 'catalog-grid',
-        columns: 3,
-        items: [
-          { icon: '🔐', title: 'SSO / 统一认证', subtitle: '支持 OAuth2、OIDC、LDAP', badge: '高复用', tone: 'success', description: '已接入 12 个项目，提供前后端示例和鉴权中间件。' },
-          { icon: '📨', title: '短信服务', subtitle: '验证码、营销、通知模板', badge: '热门', tone: 'primary', description: '支持多供应商路由和发送审计。' },
-          { icon: '💾', title: 'OSS 对象存储', subtitle: '上传、签名、生命周期管理', badge: '标准化', tone: 'primary', description: '已提供 Java / Node / Python SDK 模板。' },
-        ],
-      },
-      {
-        type: 'table',
-        title: '接入分布',
-        table: {
-          columns: ['能力', '接入项目', '文档状态', '代码模板', '最近更新'],
-          rows: [
-            [cell('统一认证'), cell('12'), cell('已发布', 'success'), cell('React / Spring / Node'), cell('03-10')],
-            [cell('短信服务'), cell('8'), cell('已发布', 'success'), cell('Node / Java'), cell('03-08')],
-            [cell('OSS'), cell('9'), cell('已发布', 'success'), cell('Java / Python / TS'), cell('03-06')],
-            [cell('支付网关'), cell('4'), cell('校验中', 'warning'), cell('Java'), cell('03-05')],
-          ],
-        },
-      },
-    ],
-  },
-  skills: {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Skill Library',
-        title: '全局技能库',
-        description: '管理可分发到 IDE 和 Agent 的技能集合，统一维护提示词、流程和能力边界。',
-        actions: [
-          { label: '创建 Skill', variant: 'primary' },
-          { label: '查看发布记录' },
-        ],
-      },
-      {
-        type: 'catalog-grid',
-        columns: 3,
-        items: [
-          { icon: '🧪', title: '代码审查 Skill', subtitle: 'PR 场景标准审查流程', badge: '活跃', tone: 'success', description: '覆盖安全、规范、性能三个子分支。' },
-          { icon: '🩺', title: '事故排障 Skill', subtitle: '结合日志与知识库定位根因', badge: '平台级', tone: 'primary', description: '已接入 SRE 值班流程，支持自动生成修复建议。' },
-          { icon: '📋', title: '需求拆分 Skill', subtitle: 'PRD → Story → Task', badge: '产品协同', tone: 'primary', description: '支持生成待办清单与评审 checklist。' },
-        ],
-      },
-      {
-        type: 'table',
-        title: 'Skill 使用情况',
-        table: {
-          columns: ['Skill', '启用项目', '最近发布', '最近调用', '状态'],
-          rows: [
-            [cell('代码审查 Skill'), cell('14'), cell('03-11'), cell('2 分钟前'), cell('已发布', 'success')],
-            [cell('事故排障 Skill'), cell('9'), cell('03-09'), cell('10 分钟前'), cell('已发布', 'success')],
-            [cell('需求拆分 Skill'), cell('6'), cell('03-07'), cell('35 分钟前'), cell('灰度中', 'warning')],
-          ],
-        },
-      },
-    ],
-  },
-  templates: {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Template Center',
-        title: '代码模板库',
-        description: '提供项目、服务、工作流和知识库接入模板，加速标准化交付。',
-        actions: [
-          { label: '新建模板', variant: 'primary' },
-          { label: '同步模板版本' },
-        ],
-      },
-      {
-        type: 'catalog-grid',
-        columns: 3,
-        items: [
-          { icon: '⚛️', title: 'React + TypeScript', subtitle: '适用于中后台与 MCP 前端控制台', badge: '推荐', tone: 'success', description: '内置 Vitest、权限骨架和设计令牌。' },
-          { icon: '🍃', title: 'Spring Boot 服务模板', subtitle: '标准化日志、监控与安全配置', badge: '主力', tone: 'primary', description: '集成 CI/CD 与原子能力接入脚手架。' },
-          { icon: '🐍', title: 'Python 数据服务', subtitle: '适合离线作业与 AI 推理编排', badge: '数据团队', tone: 'primary', description: '包含任务调度、观测和容器基线。' },
-        ],
-      },
-    ],
-  },
-  // ??????
   keys: {
     sections: [
       {
@@ -707,60 +609,17 @@ const pageKey = computed(() =>
   typeof route.params.pageKey === 'string' ? route.params.pageKey : 'default',
 )
 
-// Live skills config
-const liveSkillsConfig = computed<ModulePageConfig>(() => {
-  const skills = skillList.value
-  const published = skills.filter((s) => s.status === 'PUBLISHED')
-  const draft = skills.filter((s) => s.status === 'DRAFT')
-  return {
-    sections: [
-      {
-        type: 'hero',
-        eyebrow: 'Skill Library',
-        title: '全局技能库',
-        description: '管理可分发到 IDE 和 Agent 的技能集合，统一维护提示词、流程和能力边界。',
-        actions: [{ label: '创建 Skill', variant: 'primary' }, { label: '查看发布记录' }],
-      },
-      {
-        type: 'metrics',
-        items: [
-          { id: 'total', icon: '⚡', label: '技能总数', value: String(skills.length), delta: `已发布 ${published.length} · 草稿 ${draft.length}`, tone: 'primary' },
-          { id: 'published', icon: '✅', label: '已发布', value: String(published.length), delta: '可在 IDE 和 Agent 中使用', tone: 'success' },
-          { id: 'draft', icon: '📝', label: '草稿', value: String(draft.length), delta: '待发布', tone: 'warning' },
-          { id: 'usage', icon: '📊', label: '总使用次数', value: '—', delta: '历史调用累计', tone: 'primary' },
-        ],
-      },
-      {
-        type: 'table',
-        title: 'Skill 列表',
-        badge: '已同步',
-        table: {
-          columns: ['名称', 'Key', '分类', '范围', '状态', '使用次数'],
-          rows: skills.length > 0
-            ? skills.map((s) => [
-                cell(s.name),
-                cell(s.skillKey ?? '—', 'default', true),
-                cell(s.category ?? '—'),
-                cell(s.scope ?? '—'),
-                cell(s.status ?? '—', s.status === 'PUBLISHED' ? 'success' : s.status === 'DRAFT' ? 'warning' : 'muted'),
-                cell('—'),
-              ])
-            : [[cell('暂无数据', 'muted'), cell('—'), cell('—'), cell('—'), cell('—'), cell('—')]],
-        },
-      },
-    ],
-  }
-})
-
-const pageConfig = computed(() => {
-  if (pageKey.value === 'skills' && skillList.value.length > 0) return liveSkillsConfig.value
-  return pageConfigs[pageKey.value] ?? pageConfigs.default
-})
+const pageConfig = computed(() => pageConfigs[pageKey.value] ?? pageConfigs.default)
 </script>
 
 <template>
   <section data-testid="global-module-page">
     <GlobalKnowledgeWorkspace v-if="pageKey === 'knowledge'" />
+    <GlobalSkillsLibraryWorkspace v-else-if="pageKey === 'skills'" />
+    <GlobalToolsWorkspace v-else-if="pageKey === 'global-tools'" />
+    <GlobalIntegrationsWorkspace v-else-if="pageKey === 'integrations'" />
+    <GlobalAtomicWorkspace v-else-if="pageKey === 'atomic'" />
+    <GlobalTemplatesWorkspace v-else-if="pageKey === 'templates'" />
     <ModuleContent v-else :sections="pageConfig?.sections ?? []" />
   </section>
 </template>
