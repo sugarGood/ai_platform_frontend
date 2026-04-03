@@ -2,8 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import App from '../App.vue'
-import { routes } from '../router'
+import ProjectsPage from '../features/projects/ProjectsPage.vue'
 import { jsonEnvelope } from './mock-api-envelope'
 
 const projectsDashboardPayload = {
@@ -13,8 +12,8 @@ const projectsDashboardPayload = {
         id: 7,
         name: 'Integration Project',
         code: 'INTEGRATION',
-        description: null,
-        icon: null,
+        description: 'Integration workflow project',
+        icon: '🧩',
         projectType: 'PRODUCT',
         createdBy: 1,
         ownerUserId: 1,
@@ -22,11 +21,11 @@ const projectsDashboardPayload = {
         createdAt: '2025-01-01T00:00:00',
         updatedAt: '2025-01-01T00:00:00',
       },
-      serviceCount: 0,
-      memberCount: 0,
-      skillCount: 0,
-      toolCount: 0,
-      knowledgeCount: 0,
+      serviceCount: 2,
+      memberCount: 3,
+      skillCount: 2,
+      toolCount: 1,
+      knowledgeCount: 1,
       members: [],
     },
   ],
@@ -36,8 +35,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('project entry', () => {
-  it('navigates from projects to project overview when a project is selected', async () => {
+describe('ProjectsPage', () => {
+  it('renders the compact toolbar summary above the project list', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -54,21 +53,20 @@ describe('project entry', () => {
 
     const router = createRouter({
       history: createMemoryHistory(),
-      routes,
+      routes: [{ path: '/', name: 'home', component: { template: '<div />' } }],
     })
-    router.push('/projects')
+    await router.push('/')
     await router.isReady()
 
-    const wrapper = mount(App, {
+    const wrapper = mount(ProjectsPage, {
       global: {
         plugins: [router],
       },
     })
-
-    await flushPromises()
-    await wrapper.get('[data-testid="projects-card-grid"] [data-project-id="7"]').trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.fullPath).toBe('/projects/7/overview')
+    expect(wrapper.find('[data-testid="projects-summary-bar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="projects-card-grid"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="projects-summary-count"]').text()).toContain('1')
   })
 })
